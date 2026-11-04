@@ -366,6 +366,7 @@ the sum becomes a single matrix product:
 $$
 \nabla^2 \ell(\beta) = -X^\top W X .
 $$
+
 where $X$ is the feature matrix from Section 2.3, with one row per loan and a first column of ones for the intercept:
 
 $$
