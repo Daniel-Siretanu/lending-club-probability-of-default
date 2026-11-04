@@ -32,7 +32,7 @@ This document sets out the mathematics behind every model, transformation and me
 | Symbol | Meaning |
 |---|---|
 | $n$ | number of loans in the train set |
-| $x_i \in \mathbb{R}^d$ | feature vector of loan $i$ (known on the day the loan was approved and issued) |
+| $x_i \in \mathbb{R}^d$ | feature vector of loan $i$ (known on the day the loan was approved and issued, i.e. origination) |
 | $y_i \in \{0, 1\}$ | default indicator: $1$ = bad (default), $0$ = good |
 | $p_i = P(y_i = 1 \mid x_i)$ | probability of default of loan $i$ |
 | $\sigma(z) = 1/(1+e^{-z})$ | logistic (sigmoid) function |
@@ -50,7 +50,7 @@ This document sets out the mathematics behind every model, transformation and me
 
 ### 1.1 Target
 
-A loan is labelled **bad** ($y = 1$) if its final status is *Charged Off* or *Default*, and **good** ($y = 0$) if it is *Fully Paid*. Loans still *Current*, *In Grace Period* or *Late* have no final outcome and are excluded, because including them would label unresolved loans as good and bias PD downwards.
+A loan is labelled **bad** ($y = 1$) if its final status is *Charged Off* or *Default*, and **good** ($y = 0$) if it is *Fully Paid*. Loans still *Current*, *In Grace Period* or *Late* have no final outcome and are excluded, because including them would label unresolved loans as good and bias PD (probability of default) downwards.
 
 The PD estimated here is therefore a **lifetime PD over the loan term** (36 or 60 months), conditional on information available at origination:
 
@@ -60,7 +60,16 @@ The PD estimated here is therefore a **lifetime PD over the loan term** (36 or 6
 
 ### 1.2 Leakage rule
 
-Only variables known on the application date may enter $x$. Fields populated after origination (for example `total_pymnt`, `recoveries`, `last_pymnt_d`, `out_prncp`) are dropped, because they encode the outcome itself.
+Only variables known on the application date may enter $x$, because the model is used to decide whether to lend. Some Lending Club columns are only filled in after the loan is issued, and they are dropped because they partly record the outcome the model is trying to predict (**data leakage**):
+
+| Column | Meaning | Why it is excluded |
+|---|---|---|
+| `total_pymnt` | total amount repaid so far | defaulted loans have repaid much less |
+| `recoveries` | money collected after a charge-off | non-zero only if the loan has already defaulted |
+| `last_pymnt_d` | date of the most recent payment | defaulters stop paying early |
+| `out_prncp` | principal still outstanding | reflects the loan's final state |
+
+A model using these would score almost perfectly on historical data but **could not be used for a new applicant**, for whom none of these values exist yet.
 
 ---
 
