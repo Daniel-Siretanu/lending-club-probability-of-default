@@ -1,15 +1,89 @@
 # Methodology and Mathematical Derivations
 
 **Project:** Probability of Default (PD) model on Lending Club loans (2007–2015)
+
 **Author:** Daniel Siretanu
+
 **Status:** v0.1 (methodology, written before model build)
 
 This document sets out the mathematics behind every model, transformation and metric used in this repository. Each result is derived from first principles rather than stated, so a validator can check the reasoning independently of the code.
 
 ---
 
+## Overview
+
+### What this project does
+
+When someone applies for a loan, the lender has to decide whether to lend and at what interest rate. The central quantity behind that decision is the borrower's **probability of default (PD)**: the chance that they will fail to repay. This project uses public data from **LendingClub**, a US peer-to-peer lending platform, covering loans issued from 2007 to 2015, with one record per loan giving the borrower's application details and how the loan ended. The models are built on loans issued in 2007–2012 (the **train set**) using only information available on the day each loan was approved, and are then tested on loans issued in 2013–2015 (the **test set**), which they have never seen. This mimics how a bank uses a model built on past loans to assess future applicants (Section 12).
+
+### Why PD matters
+
+Banks use PD to:
+
+- **approve or decline** applications;
+- **price** loans, charging riskier borrowers more;
+- **set aside provisions** for expected losses (Section 13.1);
+- **hold capital** against unexpected losses (Section 13.2).
+
+To support these decisions, a PD model needs two properties. It must **rank** borrowers correctly, putting riskier borrowers above safer ones (*discrimination*, Section 10). Its PDs must also be **accurate**: if it says 5%, about 5 in 100 such loans should default (*calibration*, Section 9). A model can rank perfectly and still be miscalibrated, for example if every PD is twice too high, which would make loans overpriced and losses overstated.
+
+### Approach: one transparent model, two flexible models
+
+This project compares a **transparent model** (the most interpretable model, often called the *champion* in banks) with two **flexible models** (more complex models built to test whether the transparent one can be beaten, often called *challengers* or *benchmarks*). The comparison shows how much accuracy, if any, is given up for interpretability.
+
+| Model | Role | Strength | Weakness |
+|---|---|---|---|
+| **Weight of Evidence (WoE) logistic regression scorecard** (Sections 2–5) | transparent model (champion) | every decision can be explained feature by feature, so it is easy to validate and approve | effects change only in steps between bins, and features cannot interact |
+| **LightGBM with monotonic constraints** (Section 6) | flexible model (challenger) | captures non-linear effects and interactions between features | harder to explain; needs SHAP (Section 8) to break each prediction into feature contributions |
+| **Explainable Boosting Machine (EBM)** (Section 7) | flexible model (challenger) | learns a flexible curve for each feature that can still be plotted and read | harder than a scorecard to validate, get approved and monitor|
+
+**What these terms mean.**
+
+- **Bins and points (scorecard).** Each feature is split into ranges called *bins*, for example DTI (debt-to-income ratio) 0–10, 10–18, 18–25 and 25+. Each bin is replaced by its **Weight of Evidence**, a number measuring how much more common good loans are than bad loans in that bin (Section 3), and the scorecard turns this into a fixed number of points (Section 5). An applicant's score is the sum of the points for the bins they fall into:
+
+  | Feature | Applicant's value | Bin | Points |
+  |---|---|---|---|
+  | DTI | 22 | 18–25 | 0 |
+  | Annual income | \$45,000 | \$40k–\$60k | +10 |
+  | FICO score | 710 | 700–740 | +20 |
+  | **Score** | | | **base + 30** |
+
+  Because the points are fixed per bin, a DTI of 18.1 and a DTI of 24.9 score exactly the same, and the effect jumps only at bin edges.
+
+- **Interactions.** An interaction is when the effect of one feature depends on another. For example, a DTI of 30 is much riskier for someone earning \$25,000 than for someone earning \$200,000. The scorecard cannot represent this: it gives the same DTI points to both, because each feature adds its points independently.
+
+- **LightGBM** builds the prediction from hundreds of small decision trees. A tree can split on income first and then on DTI, so it learns interactions automatically, and it is not limited to fixed bins. *Monotonic constraints* force selected features to move risk in one direction only (for example, higher DTI never lowers PD), so the model stays consistent with economic common sense.
+
+- **SHAP** (SHapley Additive exPlanations) splits a single prediction into the contribution of each feature, for example "DTI added 3 percentage points to this applicant's PD, income removed 1". It is what makes LightGBM's individual decisions explainable.
+
+- **EBM** learns a separate smooth curve for each feature instead of fixed bins, plus a few selected pairwise interactions. Each curve can be plotted, so it is almost as readable as a scorecard and usually more accurate.
+- **Monitoring** means regularly checking a model after it goes into use, to confirm it still ranks and predicts well on new applicants (Sections 9–11).
+
+### How the pieces fit
+
+```
+Lending Club loans, 2007–2015
+  │
+  ├─ Define default; remove unresolved loans and leaked variables ....... Section 1
+  ├─ Split by issue date: train 2007–2012, test 2013–2015 ............... Section 12
+  │
+  ├─ Champion: WoE binning, IV screening, logistic regression, scorecard  Sections 2–5
+  ├─ Challengers: LightGBM, EBM ......................................... Sections 6–7
+  ├─ Explanations and reason codes (SHAP) ............................... Section 8
+  │
+  ├─ Evaluate on test: calibration, discrimination, stability ........... Sections 9–11
+  └─ Translate PD into expected loss and capital ........................ Section 13
+```
+
+### Why this document exists
+
+Model risk guidance for banks (the Federal Reserve's SR 11-7 in the US, the PRA's SS1/23 in the UK) requires that a model's **conceptual soundness** be documented and independently checkable. This document provides that: every formula used in the code is derived here, so a reviewer can verify the reasoning without reading the code.
+
+---
+
 ## Contents
 
+0. [Overview](#overview)
 1. [Problem definition](#1-problem-definition)
 2. [Logistic regression](#2-logistic-regression)
 3. [Weight of Evidence (WoE)](#3-weight-of-evidence-woe)
@@ -31,14 +105,17 @@ This document sets out the mathematics behind every model, transformation and me
 
 | Symbol | Meaning |
 |---|---|
-|PD| probability fo default|
+| PD | probability of default |
 | $n$ | number of loans in the train set |
+| $d$ | number of features |
+| $i = 1, \dots, n$ | index of a loan (a row of the data) |
+| $j = 0, 1, \dots, d$ | index of a feature (a column of the data); $j = 0$ is the intercept, with $x_{i0} = 1$ |
+| $x_{ij}$ | value of feature $j$ for loan $i$ |
 | $x_i \in \mathbb{R}^d$ | feature vector of loan $i$ (known on the day the loan was approved and issued, i.e. origination) |
 | $y_i \in \{0, 1\}$ | default indicator: $1$ = bad (default), $0$ = good |
 | $p_i = P(y_i = 1 \mid x_i)$ | probability of default of loan $i$ |
 | $\sigma(z) = 1/(1+e^{-z})$ | logistic (sigmoid) function |
 | $\pi = P(y = 1)$ | portfolio default rate (prior) |
-| $N_G, N_B$ | total number of goods and bads |
 | $G$, $B$ | the two classes: $G$ = good loan (Fully Paid, $y = 0$), $B$ = bad loan (Charged Off or Default, $y = 1$) |
 | $N_G, N_B$ | total number of good and bad loans in the train set, so $N_G + N_B = n$ |
 | bin | a range of values of one feature (e.g. DTI (stands for debt-to-income ratio) from 10 to 18); each feature is split into bins $k = 1, \dots, K$ before computing WoE (Weight of Evidence), section 3 |
@@ -90,7 +167,7 @@ The logit is not an arbitrary choice. Writing the Bernoulli mass function in exp
 P(y \mid p) = p^{y}(1-p)^{1-y} = \exp\left\{ y \ln\frac{p}{1-p} + \ln(1-p) \right\},
 ```
 
-shows that the natural parameter is $\theta = \ln\frac{p}{1-p}$. The logit is therefore the **canonical link** for binary data. A practical consequence, proved in Section 2.4, is that the log-likelihood is concave (shaped like an upside-down bowl), so it has a single maximum and the fitting algorithm is guaranteed to find it.
+shows that the natural parameter is $\theta = \ln\frac{p}{1-p}$. The logit is therefore the **canonical link** for binary data. A practical consequence, proved in Section 2.5, is that the log-likelihood is concave (shaped like an upside-down bowl), so it has a single maximum and the fitting algorithm is guaranteed to find it.
 
 To keep notation compact, absorb the intercept into $\beta$ by setting $x_{i0} = 1$, so $p_i = \sigma(x_i^\top\beta)$.
 
@@ -104,23 +181,42 @@ L(\beta) = \prod_{i=1}^{n} p_i^{\,y_i}(1-p_i)^{1-y_i},
 \ell(\beta) = \sum_{i=1}^{n}\Big[ y_i \ln p_i + (1-y_i)\ln(1-p_i) \Big].
 ```
 
-Statistics maximises the log-likelihood; machine learning libraries instead minimise a loss. The two are equivalent: flipping the sign and averaging over loans gives the **log-loss**, also called **binary cross-entropy**,
+Statistics maximises the log-likelihood; machine learning libraries instead minimise a loss. The two are equivalent: flipping the sign and averaging over loans gives the **log-loss**, also called **binary cross-entropy**, written $J(\beta)$:
 
 ```math
-\text{log-loss} = -\frac{\ell(\beta)}{n} = -\frac{1}{n}\sum_{i=1}^{n}\Big[ y_i \ln p_i + (1-y_i)\ln(1-p_i) \Big],
+J(\beta) = -\frac{1}{n}\,\ell(\beta) = -\frac{1}{n}\sum_{i=1}^{n}\Big[ y_i \ln p_i + (1-y_i)\ln(1-p_i) \Big].
 ```
 
-and the $\beta$ that maximises $\ell$ is the same $\beta$ that minimises the log-loss. It penalises confident wrong predictions most: a loan that defaults but was given PD $= 0.01$ costs $-\ln 0.01 \approx 4.6$, while PD $= 0.9$ costs only $0.11$. LightGBM (Section 6) minimises this same loss, so the two models are optimising the same objective and can be compared on it directly.
+Multiplying by $-\frac{1}{n}$ turns a maximum into a minimum without moving it, so the $\beta$ that maximises $\ell$ is the same $\beta$ that minimises $J$. Because $y_i$ is either 0 or 1, only one term in the bracket applies to each loan. A loan that **defaulted** ($y_i = 1$) adds a penalty of $-\ln p_i$; a loan that was **repaid** ($y_i = 0$) adds $-\ln(1 - p_i)$. Either way, the penalty is minus the log of the probability the model gave to what actually happened:
+
+| PD given $p_i$ | Penalty if defaulted ($y_i = 1$) | Penalty if repaid ($y_i = 0$) |
+|---|---|---|
+| 0.01 | 4.61 | 0.01 |
+| 0.10 | 2.30 | 0.11 |
+| 0.50 | 0.69 | 0.69 |
+| 0.90 | 0.11 | 2.30 |
+
+Correct predictions cost little, and wrong ones cost more the more confident they are, without limit as $p_i$ approaches 0 or 1. Minimising the average penalty therefore pushes the model hardest to avoid confidently calling a loan safe when it defaults, or risky when it is repaid.
+
+LightGBM (Section 6) minimises this same loss, so the two models are optimising the same objective and their log-loss on the test set can be compared directly.
 
 ### 2.3 Gradient
 
-The sigmoid satisfies $\sigma'(z) = \sigma(z)\,(1-\sigma(z))$, so
+**Step 1: derivative of the sigmoid.** With $\sigma(z) = (1+e^{-z})^{-1}$,
+
+```math
+\sigma'(z) = \frac{e^{-z}}{(1+e^{-z})^2}
+= \frac{1}{1+e^{-z}}\cdot\frac{e^{-z}}{1+e^{-z}}
+= \sigma(z)\,\big(1-\sigma(z)\big).
+```
+
+**Step 2: derivative of $p_i$.** Since $p_i = \sigma(x_i^\top\beta)$ and $\partial (x_i^\top\beta)/\partial\beta = x_i$, the chain rule gives
 
 ```math
 \frac{\partial p_i}{\partial \beta} = p_i(1-p_i)\,x_i .
 ```
 
-Differentiating each term of $\ell$:
+**Step 3: derivative of the log-likelihood.** Using $\frac{d}{dp}\ln p = \frac{1}{p}$ and $\frac{d}{dp}\ln(1-p) = -\frac{1}{1-p}$, and then Step 2:
 
 ```math
 \frac{\partial \ell}{\partial \beta}
@@ -129,26 +225,154 @@ Differentiating each term of $\ell$:
 = \sum_{i=1}^{n} (y_i - p_i)\,x_i .
 ```
 
-In matrix form, with design matrix $X \in \mathbb{R}^{n \times (d+1)}$:
+The $p_i(1-p_i)$ from the sigmoid cancels the denominators, which is the simplification the canonical link buys (Section 2.1).
+
+**Step 4: derivative of the log-loss.** Since $J(\beta) = -\frac{1}{n}\ell(\beta)$,
 
 ```math
-\nabla \ell(\beta) = X^\top (y - p).
+\frac{\partial J}{\partial \beta} = -\frac{1}{n}\frac{\partial \ell}{\partial \beta} = \frac{1}{n}\sum_{i=1}^{n} (p_i - y_i)\,x_i .
 ```
 
-Setting this to zero gives the **score equations**. Because the intercept column is all ones, the first equation is $\sum_i (y_i - p_i) = 0$: at the MLE, the average predicted PD equals the observed default rate in the train set.
+Each loan contributes its **prediction error** $p_i - y_i$, weighted by its features. A defaulted loan ($y_i = 1$) given a low PD has a large negative error, which pushes $\beta$ towards giving it a higher PD; a repaid loan given a high PD is pushed the other way. The same quantity $p_i - y_i$ is the gradient LightGBM uses in Section 6.2.
 
-### 2.4 Hessian and concavity
-
-Differentiating the gradient again:
+**Matrix form.** Stack the loans into the **feature matrix** $X \in \mathbb{R}^{n \times (d+1)}$: one row per loan, one column per feature, plus a first column of ones for the intercept, so that row $i$ is $x_i^\top$ and $X\beta$ is the vector of log-odds for all loans. With $y$ and $p$ the vectors of outcomes and predicted PDs,
 
 ```math
-\nabla^2 \ell(\beta) = -\sum_{i=1}^{n} p_i(1-p_i)\,x_i x_i^\top = -X^\top W X,
-\qquad W = \operatorname{diag}\big(p_i(1-p_i)\big).
+X =
+\begin{pmatrix}
+1 & x_{11} & \cdots & x_{1d} \\
+\vdots & \vdots & \ddots & \vdots \\
+1 & x_{n1} & \cdots & x_{nd}
+\end{pmatrix},
+\qquad
+\nabla \ell(\beta) = X^\top (y - p),
+\qquad
+\nabla J(\beta) = \frac{1}{n}\,X^\top (p - y).
 ```
 
-For any vector $v$, $v^\top X^\top W X v = \sum_i p_i(1-p_i)(x_i^\top v)^2 \ge 0$, so the Hessian is negative semi-definite and $\ell$ is **concave**. If $X$ has full column rank, it is strictly concave and the maximum likelihood estimate $\hat\beta$ is **unique**. (If the classes are perfectly separable, $\hat\beta$ diverges; WoE binning and regularisation both prevent this in practice.)
+Multiplying by $X^\top$ is the same as the sum $\sum_i (p_i - y_i)\,x_i$, written compactly.
 
-### 2.5 Estimation: Newton–Raphson and IRLS
+### 2.4 Score equations
+
+**What they look like.** The minimum of $J$ (equivalently the maximum of $\ell$) is where the gradient is zero:
+
+```math
+X^\top (y - p) = 0 .
+```
+
+These are the **score equations**: $d + 1$ equations, one per coefficient $\beta_j$. Row $j$ of $X^\top$ is feature $j$ across all loans $i = 1, \dots, n$, so writing out each PD in full,
+
+```math
+p_i = \sigma\left(x_i^\top\beta\right) = \frac{1}{1 + e^{-\left(\beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \cdots + \beta_d x_{id}\right)}},
+```
+
+equation $j$ is
+
+```math
+\sum_{i=1}^{n}\left[\, y_i - \frac{1}{1 + e^{-\left(\beta_0 + \beta_1 x_{i1} + \cdots + \beta_d x_{id}\right)}} \right] x_{ij} = 0, \qquad j = 0, 1, \dots, d .
+```
+
+Every $\beta_j$ sits inside an exponential, in every equation. Unlike linear regression, where $X^\top X\beta = X^\top y$ can be solved directly, $\beta$ cannot be isolated algebraically, so the equations are solved iteratively (Section 2.6).
+
+**What they mean.** Rearranged, equation $j$ says that a *predicted sum* equals an *observed sum*:
+
+```math
+\underbrace{\sum_{i=1}^{n} p_i\,x_{ij}}_{\text{predicted sum}} \;=\; \underbrace{\sum_{i=1}^{n} y_i\,x_{ij}}_{\text{observed sum}}, \qquad j = 0, 1, \dots, d .
+```
+
+- **Intercept ($j = 0$, $x_{i0} = 1$).** The equation becomes $\sum_i p_i = \sum_i y_i$: the predicted number of defaults equals the actual number. Dividing by $n$,
+
+  ```math
+  \boxed{\;\frac{1}{n}\sum_{i=1}^{n} p_i \;=\; \frac{1}{n}\sum_{i=1}^{n} y_i\;}
+  \qquad\text{average predicted PD} = \text{observed default rate.}
+  ```
+
+  This holds exactly at the fitted $\hat\beta$ for any logistic regression with an intercept, so on the train set the model's average PD always reproduces the observed default rate. It is a useful check on the code: if the two differ, the model has not converged or has no intercept.
+
+- **Each feature ($j = 1, \dots, d$).** Because $y_i = 1$ only for loans that defaulted, the observed sum is the total of feature $j$ over the defaulted loans; it is fixed by the data. The predicted sum weights each loan by its PD instead, so it is the total the model expects among defaulters, and it changes with $\beta$ through $p_i$.
+
+  **Effect of $\beta_j$ on the predicted sum.** Changing $\beta_j$ alone, with the other coefficients fixed, and using $\partial p_i / \partial \beta_j = p_i(1-p_i)\,x_{ij}$ from Step 2:
+
+  ```math
+  \frac{\partial}{\partial \beta_j}\sum_{i} p_i\,x_{ij}
+  = \sum_{i} x_{ij}\,\frac{\partial p_i}{\partial \beta_j}
+  = \sum_{i} p_i(1-p_i)\,x_{ij}^2 \;>\; 0 .
+  ```
+
+  Every term is positive, since $0 < p_i < 1$ and $x_{ij}^2 \ge 0$, so the predicted sum always increases with $\beta_j$, regardless of the sign of the feature values.
+
+  **Under- and over-prediction.** If the predicted sum is below the observed sum, the model gives too little default risk to loans with high values of feature $j$, so $\beta_j$ is increased; if it is above, $\beta_j$ is decreased. At the fitted $\hat\beta$, the predicted and observed sums are equal for every feature at once, so the model attributes exactly as much default risk to each feature as the train data shows.
+
+### 2.5 Hessian and concavity
+
+**Deriving the Hessian.** The Hessian is the matrix of second derivatives, $\nabla^2 \ell(\beta)$, with entry $(j, k)$ equal to $\partial^2 \ell / \partial \beta_j \partial \beta_k$. Start from the gradient in Section 2.3,
+
+```math
+\nabla \ell(\beta) = \sum_{i=1}^{n} (y_i - p_i)\,x_i ,
+```
+
+and differentiate again with respect to $\beta$. The outcomes $y_i$ and features $x_i$ are fixed data, so only $p_i$ changes, and by Step 2 of Section 2.3, $\partial p_i / \partial \beta^\top = p_i(1-p_i)\,x_i^\top$. Hence
+
+```math
+\nabla^2 \ell(\beta) = -\sum_{i=1}^{n} p_i(1-p_i)\,x_i\,x_i^\top .
+```
+
+Each loan contributes the $(d+1) \times (d+1)$ matrix $x_i x_i^\top$ (entry $(j,k)$ equal to $x_{ij}\,x_{ik}$), scaled by the weight $w_i = p_i(1-p_i)$.
+
+**The weight matrix $W$.** Collecting the weights into an $n \times n$ diagonal matrix, one entry per loan,
+
+```math
+W = \begin{pmatrix}
+p_1(1-p_1) & 0 & \cdots & 0 \\
+0 & p_2(1-p_2) & \cdots & 0 \\
+\vdots & \vdots & \ddots & \vdots \\
+0 & 0 & \cdots & p_n(1-p_n)
+\end{pmatrix},
+```
+
+the sum becomes a single matrix product:
+
+```math
+\nabla^2 \ell(\beta) = -X^\top W X .
+```
+where $X$ is the feature matrix from Section 2.3, with one row per loan and a first column of ones for the intercept:
+
+```math
+X =
+\begin{pmatrix}
+1 & x_{11} & x_{12} & \cdots & x_{1d} \\
+1 & x_{21} & x_{22} & \cdots & x_{2d} \\
+\vdots & \vdots & \vdots & \ddots & \vdots \\
+1 & x_{n1} & x_{n2} & \cdots & x_{nd}
+\end{pmatrix}
+\in \mathbb{R}^{n \times (d+1)} .
+```
+
+The sizes match: $X^\top$ is $(d+1) \times n$, $W$ is $n \times n$ and $X$ is $n \times (d+1)$, so $X^\top W X$ is $(d+1) \times (d+1)$, one row and one column per coefficient $\beta_j$.
+
+Each weight $w_i = p_i(1-p_i)$ is the variance of the Bernoulli outcome $y_i$. It is largest, $0.25$, when $p_i = 0.5$, and close to zero when the model is nearly certain ($p_i$ near 0 or 1), so the loans the model is least sure about carry the most weight. $W$ reappears in the fitting algorithm (Section 2.6) and the standard errors (Section 2.7).
+
+**Concavity.** A function is concave when it curves downwards in every direction. For a function of a vector, the curvature in direction $v$ is $v^\top \nabla^2 \ell\, v$, and here
+
+```math
+v^\top \nabla^2 \ell(\beta)\, v
+= -\sum_{i=1}^{n} p_i(1-p_i)\left(x_i^\top v\right)^2 \;\le\; 0
+\qquad \text{for every vector } v ,
+```
+
+because each term is a positive weight times a square. The Hessian is therefore **negative semi-definite**, and $\ell$ is **concave**: it has no local maxima other than the global one, so any point where the gradient is zero is the best possible $\beta$.
+
+**Uniqueness.** If no feature is an exact linear combination of the others ($X$ has *full column rank*), then $Xv \neq 0$ for every $v \neq 0$, so the curvature is strictly negative in every direction and $\ell$ is **strictly concave**. Equivalently, the log-loss $J$, with Hessian $\frac{1}{n}X^\top W X$, is **strictly convex**: a bowl with a single lowest point. If a minimum exists, it is therefore **unique**, and refitting on the same data always gives the same $\hat\beta$.
+
+**When no maximum exists: separation.** Uniqueness says there is *at most* one maximum, not that one exists. A maximum fails to exist when the features **perfectly separate** the two outcomes: there is a vector $v$ with $x_i^\top v > 0$ for every defaulted loan and $x_i^\top v < 0$ for every repaid loan, i.e. a hyperplane with all defaults on one side and all repayments on the other. (This is a relationship between the features and the *outcome*, unlike collinearity, which is a relationship among the features.) For example, if every loan with DTI (debt-to-income ratio) above 30 defaulted and every other loan was repaid, $v = (-30, 1)$ separates them. Setting $\beta = c\,v$ and letting $c \to \infty$ sends every defaulted loan's PD to 1 and every repaid loan's PD to 0, so $\ell(\beta)$ rises towards its upper bound of 0 without ever reaching it: the fit always improves by making the coefficients larger, and $\hat\beta$ diverges. A milder form, *quasi-complete separation*, occurs when, for example, one category of a feature contains no defaults at all: its score equation requires the PDs in that category to sum to 0, which no finite $\beta$ achieves, so the coefficient $\beta_j$ on that category's indicator diverges to $-\infty$.
+
+In credit data, separation is almost always a symptom of **leakage** (Section 1.2), since genuine application data never predicts default perfectly. It is prevented here in three ways:
+
+1. **Leaked variables are removed**, which rules out complete separation.
+2. **WoE (Weight of Evidence) binning** rules out the quasi-complete form. Each feature enters as a single WoE column with one shared coefficient $\beta_j$, rather than one indicator per category, so a category with no defaults has no coefficient of its own to diverge. Bins are also merged until each contains both goods and bads, and the 0.5 adjustment of Section 3.1 keeps every WoE finite (without it, a bin with no bads would have $\mathrm{WoE}_k = +\infty$).
+3. **L2 regularisation**, where used, adds a penalty $\lambda \lVert\beta\rVert^2$ that grows as coefficients grow, so the penalised objective always has a finite optimum.
+
+### 2.6 Estimation: Newton–Raphson and IRLS
 
 Newton's method updates
 
@@ -165,7 +389,7 @@ Defining the working response $z = X\beta^{(t)} + W^{-1}(y - p)$, the update bec
 
 a weighted least squares problem. Iterating is **Iteratively Reweighted Least Squares (IRLS)**, the algorithm used by `statsmodels`.
 
-### 2.6 Inference
+### 2.7 Inference
 
 Under standard regularity conditions, $\hat\beta$ is asymptotically normal with covariance equal to the inverse Fisher information:
 
