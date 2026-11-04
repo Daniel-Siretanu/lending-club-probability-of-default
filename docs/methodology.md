@@ -38,7 +38,11 @@ This document sets out the mathematics behind every model, transformation and me
 | $\sigma(z) = 1/(1+e^{-z})$ | logistic (sigmoid) function |
 | $\pi = P(y = 1)$ | portfolio default rate (prior) |
 | $N_G, N_B$ | total number of goods and bads |
-| $g_k, b_k$ | number of goods and bads in bin $k$ of a feature |
+| $G$, $B$ | the two classes: $G$ = good loan (Fully Paid, $y = 0$), $B$ = bad loan (Charged Off or Default, $y = 1$) |
+| $N_G, N_B$ | total number of good and bad loans in the train set, so $N_G + N_B = n$ |
+| bin | a range of values of one feature (e.g. DTI (stands for debt-to-income ratio) from 10 to 18); each feature is split into bins $k = 1, \dots, K$ before computing WoE (Weight of Evidence), section 3 |
+| $g_k, b_k$ | number of good loans and number of bad loans whose value of the feature falls in bin $k$, so $\sum_k g_k = N_G$ and $\sum_k b_k = N_B$ |
+| $D^G_k, D^B_k$ | share of all good loans, and share of all bad loans, that fall in bin $k$: $D^G_k = g_k / N_G$ and $D^B_k = b_k / N_B$ |
 
 ---
 
