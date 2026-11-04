@@ -31,7 +31,7 @@ This document sets out the mathematics behind every model, transformation and me
 
 | Symbol | Meaning |
 |---|---|
-| $n$ | number of loans in the development sample |
+| $n$ | number of loans in the train set |
 | $x_i \in \mathbb{R}^d$ | feature vector of loan $i$ (known at origination) |
 | $y_i \in \{0, 1\}$ | default indicator: $1$ = bad (default), $0$ = good |
 | $p_i = P(y_i = 1 \mid x_i)$ | probability of default of loan $i$ |
@@ -115,7 +115,7 @@ In matrix form, with design matrix $X \in \mathbb{R}^{n \times (d+1)}$:
 \nabla \ell(\beta) = X^\top (y - p).
 ```
 
-Setting this to zero gives the **score equations**. Because the intercept column is all ones, the first equation is $\sum_i (y_i - p_i) = 0$: at the MLE, the average predicted PD equals the observed default rate on the training data.
+Setting this to zero gives the **score equations**. Because the intercept column is all ones, the first equation is $\sum_i (y_i - p_i) = 0$: at the MLE, the average predicted PD equals the observed default rate in the train set.
 
 ### 2.4 Hessian and concavity
 
@@ -386,7 +386,7 @@ Splitting a node into left and right children reduces the loss by
 \text{Gain} = \frac{1}{2}\left[\frac{G_L^2}{H_L+\lambda} + \frac{G_R^2}{H_R+\lambda} - \frac{(G_L+G_R)^2}{H_L+H_R+\lambda}\right] - \gamma ,
 ```
 
-where $\gamma$ is a minimum-gain penalty (`min_gain_to_split`). LightGBM evaluates this on histogram bins and grows trees **leaf-wise** (always splitting the leaf with the largest gain), which is what makes it fast on Lending Club's roughly 1 million loans.
+where $\gamma$ is a minimum-gain penalty (`min_gain_to_split`). LightGBM evaluates this on histogram bins and grows trees **leaf-wise** (always splitting the leaf with the largest gain), which is what makes it fast on several hundred thousand Lending Club loans.
 
 ### 6.5 Monotonic constraints
 
@@ -488,7 +488,7 @@ Rearranging gives the correction applied to the intercept:
 
 ### 9.3 Recalibration
 
-For LightGBM, whose raw probabilities can be miscalibrated, a **Platt scaling** step fits $p = \sigma(a + b\,F(x))$ on a held-out calibration set, which is itself a one-feature logistic regression (Section 2). Isotonic regression is used as a non-parametric check.
+For LightGBM, whose raw probabilities can be miscalibrated, a **Platt scaling** step fits $p = \sigma(a + b\,F(x))$ on held-out validation folds of the train set (never on the test set), which is itself a one-feature logistic regression (Section 2). Isotonic regression is used as a non-parametric check.
 
 ---
 
@@ -540,13 +540,13 @@ KS is the largest vertical gap between the score distributions of goods and bads
 
 ### 11.1 Population Stability Index
 
-Let $E_k$ be the share of the development sample in score band $k$ and $A_k$ the share in a later (validation or monitoring) sample:
+Let $E_k$ be the share of the train set in score band $k$ and $A_k$ the share in a later sample (the test set, or new applicants during monitoring):
 
 ```math
 \mathrm{PSI} = \sum_{k=1}^{K}\left(A_k - E_k\right)\ln\frac{A_k}{E_k}.
 ```
 
-By the same algebra as Section 4.2, PSI is the **Jeffreys divergence** between the development and current score distributions, so it is non-negative and zero only when they match.
+By the same algebra as Section 4.2, PSI is the **Jeffreys divergence** between the train and later score distributions, so it is non-negative and zero only when they match.
 
 | PSI | Interpretation |
 |---|---|
@@ -566,10 +566,12 @@ The **CSI** applies the same formula to each input feature's bins, which identif
 
 Loans are split by **issue date**, not at random:
 
-| Sample | Issue years | Use |
-|---|---|---|
-| Development (train) | 2007–2012 | model fitting, binning, hyperparameters (via cross-validation) |
-| Out-of-time test | 2013–2015 | final, untouched performance estimate |
+| Sample | Name in code | Issue years | Use |
+|---|---|---|---|
+| **Train** | `train` | 2007–2012 | model fitting, WoE binning, hyperparameter tuning, calibration |
+| **Test** (out-of-time) | `test` | 2013–2015 | final, untouched performance estimate |
+
+The train set is what bank model documentation calls the *development sample*, and the test set is the *out-of-time (OOT) sample*. Within the train set, $k$-fold cross-validation splits the data into **validation folds** for tuning; the word *test* is reserved for the 2013–2015 loans, which are used once, at the end.
 
 A random split would let the model see loans from the same economic period it is tested on. An OOT split tests what actually matters: whether a model built on past vintages ranks and calibrates **future** applicants.
 
@@ -579,7 +581,7 @@ A 60-month loan issued in 2015 may still be running at the data cut-off. Keeping
 
 ### 12.3 What is reported
 
-For each model on each sample: AUC, Gini, KS, Brier score, calibration curve and Hosmer–Lemeshow, PSI between development and OOT, and a bootstrap 95% confidence interval for Gini.
+For each model on both train and test: AUC, Gini, KS, Brier score, calibration curve and Hosmer–Lemeshow, PSI between train and test, and a bootstrap 95% confidence interval for Gini. A large drop in Gini from train to test signals overfitting or population drift.
 
 ---
 
