@@ -31,6 +31,7 @@ This document sets out the mathematics behind every model, transformation and me
 
 | Symbol | Meaning |
 |---|---|
+|PD| probability fo default|
 | $n$ | number of loans in the train set |
 | $x_i \in \mathbb{R}^d$ | feature vector of loan $i$ (known on the day the loan was approved and issued, i.e. origination) |
 | $y_i \in \{0, 1\}$ | default indicator: $1$ = bad (default), $0$ = good |
@@ -89,7 +90,7 @@ The logit is not an arbitrary choice. Writing the Bernoulli mass function in exp
 P(y \mid p) = p^{y}(1-p)^{1-y} = \exp\left\{ y \ln\frac{p}{1-p} + \ln(1-p) \right\},
 ```
 
-shows that the natural parameter is $\theta = \ln\frac{p}{1-p}$. The logit is therefore the **canonical link** for binary data, which gives the log-likelihood the concavity derived below.
+shows that the natural parameter is $\theta = \ln\frac{p}{1-p}$. The logit is therefore the **canonical link** for binary data. A practical consequence, proved in Section 2.4, is that the log-likelihood is concave (shaped like an upside-down bowl), so it has a single maximum and the fitting algorithm is guaranteed to find it.
 
 To keep notation compact, absorb the intercept into $\beta$ by setting $x_{i0} = 1$, so $p_i = \sigma(x_i^\top\beta)$.
 
@@ -103,7 +104,13 @@ L(\beta) = \prod_{i=1}^{n} p_i^{\,y_i}(1-p_i)^{1-y_i},
 \ell(\beta) = \sum_{i=1}^{n}\Big[ y_i \ln p_i + (1-y_i)\ln(1-p_i) \Big].
 ```
 
-Maximising $\ell$ is the same as minimising the **log-loss** (binary cross-entropy) $-\ell(\beta)/n$, which is also the loss used by LightGBM in Section 6.
+Statistics maximises the log-likelihood; machine learning libraries instead minimise a loss. The two are equivalent: flipping the sign and averaging over loans gives the **log-loss**, also called **binary cross-entropy**,
+
+```math
+\text{log-loss} = -\frac{\ell(\beta)}{n} = -\frac{1}{n}\sum_{i=1}^{n}\Big[ y_i \ln p_i + (1-y_i)\ln(1-p_i) \Big],
+```
+
+and the $\beta$ that maximises $\ell$ is the same $\beta$ that minimises the log-loss. It penalises confident wrong predictions most: a loan that defaults but was given PD $= 0.01$ costs $-\ln 0.01 \approx 4.6$, while PD $= 0.9$ costs only $0.11$. LightGBM (Section 6) minimises this same loss, so the two models are optimising the same objective and can be compared on it directly.
 
 ### 2.3 Gradient
 
