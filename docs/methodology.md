@@ -308,13 +308,13 @@ Every $\beta_j$ sits inside an exponential, in every equation. Unlike linear reg
 **What they mean.** Rearranged, equation $j$ says that a *predicted sum* equals an *observed sum*:
 
 $$
-\underbrace{\sum_{i=1}^{n} p_i\thinspace x_{ij}}_{\text{predicted sum}} \thickspace =\thickspace  \underbrace{\sum_{i=1}^{n} y_i\thinspace x_{ij}}_{\text{observed sum}}, \qquad j = 0, 1, \dots, d .
+\underbrace{\sum_{i=1}^{n} p_i\thinspace x_{ij}}_{\text{predicted sum}} = \underbrace{\sum_{i=1}^{n} y_i\thinspace x_{ij}}_{\text{observed sum}}, \qquad j = 0, 1, \dots, d .
 $$
 
 **Intercept ($j = 0$, $x_{i0} = 1$).** The equation becomes $\sum_i p_i = \sum_i y_i$: the predicted number of defaults equals the actual number. Dividing by $n$,
 
 $$
-\boxed{\thickspace \frac{1}{n}\sum_{i=1}^{n} p_i \thickspace =\thickspace  \frac{1}{n}\sum_{i=1}^{n} y_i\thickspace }
+{\frac{1}{n}\sum_{i=1}^{n} p_i = \frac{1}{n}\sum_{i=1}^{n} y_i}
 \qquad\text{average predicted PD} = \text{observed default rate.}
 $$
 
@@ -327,7 +327,7 @@ This holds exactly at the fitted $\hat\beta$ for any logistic regression with an
 $$
 \frac{\partial}{\partial \beta_j}\sum_{i} p_i\thinspace x_{ij}
 = \sum_{i} x_{ij}\thinspace \frac{\partial p_i}{\partial \beta_j}
-= \sum_{i} p_i(1-p_i)\thinspace x_{ij}^2 \thickspace >\thickspace  0 .
+= \sum_{i} p_i(1-p_i)\thinspace x_{ij}^2 > 0 .
 $$
 
 Every term is positive, since $0 < p_i < 1$ and $x_{ij}^2 \ge 0$, so the predicted sum always increases with $\beta_j$, regardless of the sign of the feature values.
@@ -388,7 +388,7 @@ Each weight $w_i = p_i(1-p_i)$ is the variance of the Bernoulli outcome $y_i$. I
 
 $$
 v^\top \nabla^2 \ell(\beta)\thinspace  v
-= -\sum_{i=1}^{n} p_i(1-p_i)\left(x_i^\top v\right)^2 \thickspace \le\thickspace  0
+= -\sum_{i=1}^{n} p_i(1-p_i)\left(x_i^\top v\right)^2 \le 0
 \qquad \text{for every vector } v ,
 $$
 
@@ -428,7 +428,7 @@ Under standard regularity conditions, $\hat\beta$ is asymptotically normal with 
 $$
 \widehat{\operatorname{Var}}(\hat\beta) = \left(X^\top \hat W X\right)^{-1},
 \qquad
-z_j = \frac{\hat\beta_j}{\widehat{\operatorname{se}}(\hat\beta_j)} \thickspace \sim\thickspace  N(0,1) \text{ under } H_0:\beta_j = 0 .
+z_j = \frac{\hat\beta_j}{\widehat{\operatorname{se}}(\hat\beta_j)} \sim N(0,1) \text{ under } H_0:\beta_j = 0 .
 $$
 
 These Wald statistics are reported for every scorecard coefficient. The coefficient $\beta_j$ has a direct reading: a one-unit increase in $x_j$ multiplies the odds of default by $e^{\beta_j}$.
@@ -566,7 +566,7 @@ From condition 2:
 
 $$
 \text{Factor}\cdot\ln(2\thinspace o) - \text{Factor}\cdot\ln(o) = \mathrm{PDO}
-\thickspace \thickspace \Longrightarrow\thickspace \thickspace 
+\Longrightarrow
 \text{Factor} = \frac{\mathrm{PDO}}{\ln 2}.
 $$
 
@@ -669,7 +669,7 @@ where $\gamma$ is a minimum-gain penalty (`min_gain_to_split`). LightGBM evaluat
 For a feature $x_j$ with an economic sign (higher income should never raise PD), a constraint is imposed:
 
 $$
-x_j \le x_j' \thickspace \Longrightarrow\thickspace  F(x) \ge F(x') \quad \text{(decreasing PD in } x_j\text{), all other features fixed.}
+x_j \le x_j' \Longrightarrow F(x) \ge F(x') \quad \text{(decreasing PD in } x_j\text{), all other features fixed.}
 $$
 
 LightGBM enforces this by rejecting any split on $x_j$ whose left and right leaf values violate the required order, and by passing bounds down to descendant nodes so that no later split can break it. Every tree is then monotonic in $x_j$, and so is their sum. This gives up a little accuracy in exchange for a model whose behaviour matches the scorecard's WoE signs, which is a common model risk requirement.
@@ -751,7 +751,7 @@ Discrimination (ranking) and calibration (correct levels) are different properti
 With $G$ groups, $O_g$ observed defaults, $E_g = \sum_{i \in g} p_i$ expected defaults and $n_g$ loans in group $g$, the Hosmer–Lemeshow statistic is
 
 $$
-\mathrm{HL} = \sum_{g=1}^{G}\frac{(O_g - E_g)^2}{E_g\left(1 - E_g/n_g\right)} \thickspace \sim\thickspace  \chi^2_{G-2} .
+\mathrm{HL} = \sum_{g=1}^{G}\frac{(O_g - E_g)^2}{E_g\left(1 - E_g/n_g\right)} \sim \chi^2_{G-2} .
 $$
 
 ### 9.2 Prior correction
@@ -785,7 +785,7 @@ At threshold $t$, the true positive rate is $\mathrm{TPR}(t) = 1 - F_B(t)$ and t
 **AUC as a probability.** Writing $f_G$ for the density of $s$ among goods,
 
 $$
-\mathrm{AUC} = \int_0^1 \mathrm{TPR}\thickspace  d\thinspace \mathrm{FPR}
+\mathrm{AUC} = \int_0^1 \mathrm{TPR} d\thinspace \mathrm{FPR}
 = \int_{-\infty}^{\infty}\left(1 - F_B(t)\right) f_G(t)\thinspace dt
 = P\left(S_B > S_G\right),
 $$
@@ -888,7 +888,7 @@ $$
 and the capital requirement per unit of exposure is
 
 $$
-K = \mathrm{LGD}\cdot\left[\Phi\left(\frac{\Phi^{-1}(\mathrm{PD}) + \sqrt{R}\thickspace \Phi^{-1}(0.999)}{\sqrt{1-R}}\right) - \mathrm{PD}\right],
+K = \mathrm{LGD}\cdot\left[\Phi\left(\frac{\Phi^{-1}(\mathrm{PD}) + \sqrt{R}\Phi^{-1}(0.999)}{\sqrt{1-R}}\right) - \mathrm{PD}\right],
 \qquad
 \mathrm{RWA} = 12.5 \cdot K \cdot \mathrm{EAD},
 $$
