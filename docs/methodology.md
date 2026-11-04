@@ -32,7 +32,7 @@ This document sets out the mathematics behind every model, transformation and me
 | Symbol | Meaning |
 |---|---|
 | $n$ | number of loans in the train set |
-| $x_i \in \mathbb{R}^d$ | feature vector of loan $i$ (known at origination) |
+| $x_i \in \mathbb{R}^d$ | feature vector of loan $i$ (known on the day the loan was approved and issued) |
 | $y_i \in \{0, 1\}$ | default indicator: $1$ = bad (default), $0$ = good |
 | $p_i = P(y_i = 1 \mid x_i)$ | probability of default of loan $i$ |
 | $\sigma(z) = 1/(1+e^{-z})$ | logistic (sigmoid) function |
