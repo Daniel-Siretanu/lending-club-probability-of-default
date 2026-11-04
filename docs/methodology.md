@@ -128,9 +128,9 @@ Model risk guidance for banks (the Federal Reserve's SR 11-7 in the US, the PRA'
 
 ### 1.1 Target
 
-A loan is labelled **bad** ($y = 1$) if its final status is *Charged Off* or *Default*, and **good** ($y = 0$) if it is *Fully Paid*. Loans still *Current*, *In Grace Period* or *Late* have no final outcome and are excluded, because including them would label unresolved loans as good and bias PD (probability of default) downwards.
+A loan is labelled **bad** ($y = 1$) if its final status is *Charged Off* or *Default*, and **good** ($y = 0$) if it is *Fully Paid*. Loans still *Current*, *In Grace Period* or *Late* have no final outcome yet and are excluded: some of them will default later, so counting them as good would make estimated PDs too low.
 
-The PD estimated here is therefore a **lifetime PD over the loan term** (36 or 60 months), conditional on information available at origination:
+The quantity estimated is therefore a **lifetime PD over the loan term** (36 or 60 months), given the applicant's features $x$:
 
 ```math
 \mathrm{PD}(x) = P\left(Y = 1 \mid X = x\right).
@@ -138,7 +138,7 @@ The PD estimated here is therefore a **lifetime PD over the loan term** (36 or 6
 
 ### 1.2 Leakage rule
 
-Only variables known on the application date may enter $x$, because the model is used to decide whether to lend. Some Lending Club columns are only filled in after the loan is issued, and they are dropped because they partly record the outcome the model is trying to predict (**data leakage**):
+The model is used to decide whether to lend, so only variables known on the application date may enter $x$. Some LendingClub columns are filled in only after the loan is issued and partly record the outcome itself; using them is called **data leakage**, and they are dropped:
 
 | Column | Meaning | Why it is excluded |
 |---|---|---|
@@ -149,27 +149,58 @@ Only variables known on the application date may enter $x$, because the model is
 
 A model using these would score almost perfectly on historical data but **could not be used for a new applicant**, for whom none of these values exist yet.
 
+
 ---
 
 ## 2. Logistic regression
 
 ### 2.1 Model
 
-Each $y_i$ is a Bernoulli random variable with parameter $p_i$. Logistic regression models the **log-odds** of default as linear in the features:
+**The outcome.** Each loan $i$ either defaults ($y_i = 1$) or is repaid ($y_i = 0$). Its probability of default is $p_i$, so $P(y_i = 1) = p_i$ and $P(y_i = 0) = 1 - p_i$. A random variable that takes only the values 0 and 1 like this is called a **Bernoulli** random variable.
+
+**Why not model $p_i$ directly?** A probability must stay between 0 and 1, but a linear formula such as $\beta_0 + \beta_1 x_{i1}$ can produce any number, for example $-0.3$ or $1.7$. So instead of $p_i$ itself, logistic regression models a transformed version of it that can take any value.
+
+**Odds and log-odds.** The **odds** of default are $\frac{p_i}{1 - p_i}$: a PD of 20% gives odds of $0.2/0.8 = 0.25$, i.e. 1 default for every 4 repayments. Odds range from 0 to $\infty$. Taking the natural log gives the **log-odds**, which range over all real numbers:
+
+| PD $p_i$ | Odds $\frac{p_i}{1-p_i}$ | Log-odds $\ln\frac{p_i}{1-p_i}$ |
+|---|---|---|
+| 0.01 | 0.0101 | −4.60 |
+| 0.20 | 0.25 | −1.39 |
+| 0.50 | 1 | 0 |
+| 0.80 | 4 | +1.39 |
+
+**The model.** Logistic regression sets the log-odds equal to a linear combination of the features:
 
 ```math
-\ln\frac{p_i}{1 - p_i} = \beta_0 + x_i^\top \beta \quad\Longleftrightarrow\quad p_i = \sigma\left(\beta_0 + x_i^\top \beta\right).
+\ln\frac{p_i}{1 - p_i} = \beta_0 + \beta_1 x_{i1} + \cdots + \beta_d x_{id} .
 ```
 
-The logit is not an arbitrary choice. Writing the Bernoulli mass function in exponential-family form,
+Solving for $p_i$ gives the **sigmoid** function $\sigma$, which turns any number back into a probability between 0 and 1:
 
 ```math
-P(y \mid p) = p^{y}(1-p)^{1-y} = \exp\left\{ y \ln\frac{p}{1-p} + \ln(1-p) \right\},
+p_i = \sigma\left(\beta_0 + \beta_1 x_{i1} + \cdots + \beta_d x_{id}\right), \qquad \sigma(z) = \frac{1}{1 + e^{-z}} .
 ```
 
-shows that the natural parameter is $\theta = \ln\frac{p}{1-p}$. The logit is therefore the **canonical link** for binary data. A practical consequence, proved in Section 2.5, is that the log-likelihood is concave (shaped like an upside-down bowl), so it has a single maximum and the fitting algorithm is guaranteed to find it.
+To keep the notation short, we add a constant feature $x_{i0} = 1$ to every loan, so that the intercept $\beta_0$ is treated like any other coefficient and the model becomes $p_i = \sigma(x_i^\top\beta)$, where $x_i^\top\beta = \beta_0 + \beta_1 x_{i1} + \cdots + \beta_d x_{id}$.
 
-To keep notation compact, absorb the intercept into $\beta$ by setting $x_{i0} = 1$, so $p_i = \sigma(x_i^\top\beta)$.
+**Why log-odds?** Other transformations also keep probabilities between 0 and 1 (the *probit* model, for example, uses the normal distribution instead of the sigmoid). The log-odds is chosen because it has three practical advantages.
+
+1. **It makes the maths simple.** Writing the Bernoulli probability as an exponential and collecting the terms in $y$:
+
+   ```math
+   \begin{aligned}
+   P(y \mid p) = p^{y}(1-p)^{1-y}
+   &= \exp\Big\{ y \ln p + (1-y)\ln(1-p) \Big\} \\
+   &= \exp\Big\{ y \ln p - y\ln(1-p) + \ln(1-p) \Big\} \\
+   &= \exp\Big\{ y \,\underbrace{\ln\tfrac{p}{1-p}}_{\text{log-odds}} + \ln(1-p) \Big\}.
+   \end{aligned}
+   ```
+
+   The outcome $y$ is multiplied by exactly the log-odds, so modelling the log-odds as linear in the features makes the gradient reduce to the simple prediction error $y_i - p_i$ (Section 2.3).
+
+2. **The coefficients are easy to interpret.** Increasing feature $j$ by one unit adds $\beta_j$ to the log-odds, which multiplies the odds of default by $e^{\beta_j}$. For example, if $\beta_j = 0.10$, then $e^{0.10} \approx 1.105$, so each one-unit increase multiplies the odds of default by 1.105, i.e. increases them by about 10.5%.
+
+3. **It matches the scorecard.** Weight of Evidence (Section 3) is also measured on the log-odds scale, so WoE values can be fed straight into the model, and scorecard points are a linear function of the log-odds (Section 5).
 
 ### 2.2 Log-likelihood
 
@@ -196,7 +227,7 @@ Multiplying by $-\frac{1}{n}$ turns a maximum into a minimum without moving it, 
 | 0.50 | 0.69 | 0.69 |
 | 0.90 | 0.11 | 2.30 |
 
-Correct predictions cost little, and wrong ones cost more the more confident they are, without limit as $p_i$ approaches 0 or 1. Minimising the average penalty therefore pushes the model hardest to avoid confidently calling a loan safe when it defaults, or risky when it is repaid.
+Correct predictions cost little. Wrong predictions cost more the more confident they are, without limit. Minimising the average penalty therefore makes avoiding confident mistakes, such as calling a loan safe when it defaults, which is the model's highest priority.
 
 LightGBM (Section 6) minimises this same loss, so the two models are optimising the same objective and their log-loss on the test set can be compared directly.
 
