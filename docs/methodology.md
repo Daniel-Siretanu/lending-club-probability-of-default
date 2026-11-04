@@ -112,7 +112,7 @@ Model risk guidance for banks (in the US, the interagency guidance SR 26-2, whic
 | $j = 0, 1, \dots, d$ | index of a feature (a column of the data); $j = 0$ is the intercept, with $x_{i0} = 1$ |
 | $x_{ij}$ | value of feature $j$ for loan $i$ |
 | $x_i \in \mathbb{R}^d$ | feature vector of loan $i$ (known on the day the loan was approved and issued, i.e. origination) |
-| $y_i \in \{0, 1\}$ | default indicator: $1$ = bad (default), $0$ = good |
+| $y_i \in \lbrace 0, 1\rbrace$ | default indicator: $1$ = bad (default), $0$ = good |
 | $p_i = P(y_i = 1 \mid x_i)$ | probability of default of loan $i$ |
 | $\sigma(z) = 1/(1+e^{-z})$ | logistic (sigmoid) function |
 | $\pi = P(y = 1)$ | portfolio default rate (prior) |
@@ -190,9 +190,9 @@ To keep the notation short, we add a constant feature $x_{i0} = 1$ to every loan
 $$
 \begin{aligned}
 P(y \mid p) = p^{y}(1-p)^{1-y}
-&= \exp\Big\{ y \ln p + (1-y)\ln(1-p) \Big\} \\
-&= \exp\Big\{ y \ln p - y\ln(1-p) + \ln(1-p) \Big\} \\
-&= \exp\Big\{ y \,\underbrace{\ln\tfrac{p}{1-p}}_{\text{log-odds}} + \ln(1-p) \Big\}.
+&= \exp\Big\lbrace  y \ln p + (1-y)\ln(1-p) \Big\rbrace  \cr
+&= \exp\Big\lbrace  y \ln p - y\ln(1-p) + \ln(1-p) \Big\rbrace  \cr
+&= \exp\Big\lbrace  y \thinspace \underbrace{\ln\tfrac{p}{1-p}}_{\text{log-odds}} + \ln(1-p) \Big\rbrace .
 \end{aligned}
 $$
 
@@ -207,7 +207,7 @@ The outcome $y$ is multiplied by exactly the log-odds, so modelling the log-odds
 Assuming independent loans, the likelihood and log-likelihood are
 
 $$
-L(\beta) = \prod_{i=1}^{n} p_i^{\,y_i}(1-p_i)^{1-y_i},
+L(\beta) = \prod_{i=1}^{n} p_i^{\thinspace y_i}(1-p_i)^{1-y_i},
 \qquad
 \ell(\beta) = \sum_{i=1}^{n}\Big[ y_i \ln p_i + (1-y_i)\ln(1-p_i) \Big].
 $$
@@ -215,7 +215,7 @@ $$
 Statistics maximises the log-likelihood; machine learning libraries instead minimise a loss. The two are equivalent: flipping the sign and averaging over loans gives the **log-loss**, also called **binary cross-entropy**, written $J(\beta)$:
 
 $$
-J(\beta) = -\frac{1}{n}\,\ell(\beta) = -\frac{1}{n}\sum_{i=1}^{n}\Big[ y_i \ln p_i + (1-y_i)\ln(1-p_i) \Big].
+J(\beta) = -\frac{1}{n}\thinspace \ell(\beta) = -\frac{1}{n}\sum_{i=1}^{n}\Big[ y_i \ln p_i + (1-y_i)\ln(1-p_i) \Big].
 $$
 
 Multiplying by $-\frac{1}{n}$ turns a maximum into a minimum without moving it, so the $\beta$ that maximises $\ell$ is the same $\beta$ that minimises $J$. Because $y_i$ is either 0 or 1, only one term in the bracket applies to each loan. A loan that **defaulted** ($y_i = 1$) adds a penalty of $-\ln p_i$; a loan that was **repaid** ($y_i = 0$) adds $-\ln(1 - p_i)$. Either way, the penalty is minus the log of the probability the model gave to what actually happened:
@@ -238,22 +238,22 @@ LightGBM (Section 6) minimises this same loss, so the two models are optimising 
 $$
 \sigma'(z) = \frac{e^{-z}}{(1+e^{-z})^2}
 = \frac{1}{1+e^{-z}}\cdot\frac{e^{-z}}{1+e^{-z}}
-= \sigma(z)\,\big(1-\sigma(z)\big).
+= \sigma(z)\thinspace \big(1-\sigma(z)\big).
 $$
 
 **Step 2: derivative of $p_i$.** Since $p_i = \sigma(x_i^\top\beta)$ and $\partial (x_i^\top\beta)/\partial\beta = x_i$, the chain rule gives
 
 $$
-\frac{\partial p_i}{\partial \beta} = p_i(1-p_i)\,x_i .
+\frac{\partial p_i}{\partial \beta} = p_i(1-p_i)\thinspace x_i .
 $$
 
 **Step 3: derivative of the log-likelihood.** Using $\frac{d}{dp}\ln p = \frac{1}{p}$ and $\frac{d}{dp}\ln(1-p) = -\frac{1}{1-p}$, and then Step 2:
 
 $$
 \frac{\partial \ell}{\partial \beta}
-= \sum_{i=1}^{n}\left[\frac{y_i}{p_i} - \frac{1-y_i}{1-p_i}\right] p_i(1-p_i)\,x_i
+= \sum_{i=1}^{n}\left[\frac{y_i}{p_i} - \frac{1-y_i}{1-p_i}\right] p_i(1-p_i)\thinspace x_i
 = \sum_{i=1}^{n}\Big[ y_i(1-p_i) - (1-y_i)p_i \Big] x_i
-= \sum_{i=1}^{n} (y_i - p_i)\,x_i .
+= \sum_{i=1}^{n} (y_i - p_i)\thinspace x_i .
 $$
 
 The $p_i(1-p_i)$ from the sigmoid cancels the denominators, which is the simplification the canonical link buys (Section 2.1).
@@ -261,7 +261,7 @@ The $p_i(1-p_i)$ from the sigmoid cancels the denominators, which is the simplif
 **Step 4: derivative of the log-loss.** Since $J(\beta) = -\frac{1}{n}\ell(\beta)$,
 
 $$
-\frac{\partial J}{\partial \beta} = -\frac{1}{n}\frac{\partial \ell}{\partial \beta} = \frac{1}{n}\sum_{i=1}^{n} (p_i - y_i)\,x_i .
+\frac{\partial J}{\partial \beta} = -\frac{1}{n}\frac{\partial \ell}{\partial \beta} = \frac{1}{n}\sum_{i=1}^{n} (p_i - y_i)\thinspace x_i .
 $$
 
 Each loan contributes its **prediction error** $p_i - y_i$, weighted by its features. A defaulted loan ($y_i = 1$) given a low PD has a large negative error, which pushes $\beta$ towards giving it a higher PD; a repaid loan given a high PD is pushed the other way. The same quantity $p_i - y_i$ is the gradient LightGBM uses in Section 6.2.
@@ -271,14 +271,14 @@ Each loan contributes its **prediction error** $p_i - y_i$, weighted by its feat
 $$
 X =
 \begin{pmatrix}
-1 & x_{11} & \cdots & x_{1d} \\
-\vdots & \vdots & \ddots & \vdots \\
+1 & x_{11} & \cdots & x_{1d} \cr
+\vdots & \vdots & \ddots & \vdots \cr
 1 & x_{n1} & \cdots & x_{nd}
 \end{pmatrix},
 \qquad
 \nabla \ell(\beta) = X^\top (y - p),
 \qquad
-\nabla J(\beta) = \frac{1}{n}\,X^\top (p - y).
+\nabla J(\beta) = \frac{1}{n}\thinspace X^\top (p - y).
 $$
 
 Multiplying by $X^\top$ is the same as the sum $\sum_i (p_i - y_i)x_i$, written compactly.
@@ -300,7 +300,7 @@ $$
 equation $j$ is
 
 $$
-\sum_{i=1}^{n}\left[\, y_i - \frac{1}{1 + e^{-\left(\beta_0 + \beta_1 x_{i1} + \cdots + \beta_d x_{id}\right)}} \right] x_{ij} = 0, \qquad j = 0, 1, \dots, d .
+\sum_{i=1}^{n}\left[\thinspace  y_i - \frac{1}{1 + e^{-\left(\beta_0 + \beta_1 x_{i1} + \cdots + \beta_d x_{id}\right)}} \right] x_{ij} = 0, \qquad j = 0, 1, \dots, d .
 $$
 
 Every $\beta_j$ sits inside an exponential, in every equation. Unlike linear regression, where $X^\top X\beta = X^\top y$ can be solved directly, $\beta$ cannot be isolated algebraically, so the equations are solved iteratively (Section 2.6).
@@ -308,13 +308,13 @@ Every $\beta_j$ sits inside an exponential, in every equation. Unlike linear reg
 **What they mean.** Rearranged, equation $j$ says that a *predicted sum* equals an *observed sum*:
 
 $$
-\underbrace{\sum_{i=1}^{n} p_i\,x_{ij}}_{\text{predicted sum}} \;=\; \underbrace{\sum_{i=1}^{n} y_i\,x_{ij}}_{\text{observed sum}}, \qquad j = 0, 1, \dots, d .
+\underbrace{\sum_{i=1}^{n} p_i\thinspace x_{ij}}_{\text{predicted sum}} \thickspace =\thickspace  \underbrace{\sum_{i=1}^{n} y_i\thinspace x_{ij}}_{\text{observed sum}}, \qquad j = 0, 1, \dots, d .
 $$
 
 **Intercept ($j = 0$, $x_{i0} = 1$).** The equation becomes $\sum_i p_i = \sum_i y_i$: the predicted number of defaults equals the actual number. Dividing by $n$,
 
 $$
-\boxed{\;\frac{1}{n}\sum_{i=1}^{n} p_i \;=\; \frac{1}{n}\sum_{i=1}^{n} y_i\;}
+\boxed{\thickspace \frac{1}{n}\sum_{i=1}^{n} p_i \thickspace =\thickspace  \frac{1}{n}\sum_{i=1}^{n} y_i\thickspace }
 \qquad\text{average predicted PD} = \text{observed default rate.}
 $$
 
@@ -325,9 +325,9 @@ This holds exactly at the fitted $\hat\beta$ for any logistic regression with an
 **Effect of $\beta_j$ on the predicted sum.** Changing $\beta_j$ alone, with the other coefficients fixed, and using $\partial p_i / \partial \beta_j = p_i(1-p_i)x_{ij}$ from Step 2:
 
 $$
-\frac{\partial}{\partial \beta_j}\sum_{i} p_i\,x_{ij}
-= \sum_{i} x_{ij}\,\frac{\partial p_i}{\partial \beta_j}
-= \sum_{i} p_i(1-p_i)\,x_{ij}^2 \;>\; 0 .
+\frac{\partial}{\partial \beta_j}\sum_{i} p_i\thinspace x_{ij}
+= \sum_{i} x_{ij}\thinspace \frac{\partial p_i}{\partial \beta_j}
+= \sum_{i} p_i(1-p_i)\thinspace x_{ij}^2 \thickspace >\thickspace  0 .
 $$
 
 Every term is positive, since $0 < p_i < 1$ and $x_{ij}^2 \ge 0$, so the predicted sum always increases with $\beta_j$, regardless of the sign of the feature values.
@@ -339,13 +339,13 @@ Every term is positive, since $0 < p_i < 1$ and $x_{ij}^2 \ge 0$, so the predict
 **Deriving the Hessian.** The Hessian is the matrix of second derivatives, $\nabla^2 \ell(\beta)$, with entry $(j, k)$ equal to $\partial^2 \ell / \partial \beta_j \partial \beta_k$. Start from the gradient in Section 2.3,
 
 $$
-\nabla \ell(\beta) = \sum_{i=1}^{n} (y_i - p_i)\,x_i ,
+\nabla \ell(\beta) = \sum_{i=1}^{n} (y_i - p_i)\thinspace x_i ,
 $$
 
 and differentiate again with respect to $\beta$. The outcomes $y_i$ and features $x_i$ are fixed data, so only $p_i$ changes, and by Step 2 of Section 2.3, $\partial p_i / \partial \beta^\top = p_i(1-p_i)x_i^\top$. Hence
 
 $$
-\nabla^2 \ell(\beta) = -\sum_{i=1}^{n} p_i(1-p_i)\,x_i\,x_i^\top .
+\nabla^2 \ell(\beta) = -\sum_{i=1}^{n} p_i(1-p_i)\thinspace x_i\thinspace x_i^\top .
 $$
 
 Each loan contributes the $(d+1) \times (d+1)$ matrix $x_i x_i^\top$ (entry $(j,k)$ equal to $x_{ij}x_{ik}$), scaled by the weight $w_i = p_i(1-p_i)$.
@@ -354,9 +354,9 @@ Each loan contributes the $(d+1) \times (d+1)$ matrix $x_i x_i^\top$ (entry $(j,
 
 $$
 W = \begin{pmatrix}
-p_1(1-p_1) & 0 & \cdots & 0 \\
-0 & p_2(1-p_2) & \cdots & 0 \\
-\vdots & \vdots & \ddots & \vdots \\
+p_1(1-p_1) & 0 & \cdots & 0 \cr
+0 & p_2(1-p_2) & \cdots & 0 \cr
+\vdots & \vdots & \ddots & \vdots \cr
 0 & 0 & \cdots & p_n(1-p_n)
 \end{pmatrix},
 $$
@@ -371,9 +371,9 @@ where $X$ is the feature matrix from Section 2.3, with one row per loan and a fi
 $$
 X =
 \begin{pmatrix}
-1 & x_{11} & x_{12} & \cdots & x_{1d} \\
-1 & x_{21} & x_{22} & \cdots & x_{2d} \\
-\vdots & \vdots & \vdots & \ddots & \vdots \\
+1 & x_{11} & x_{12} & \cdots & x_{1d} \cr
+1 & x_{21} & x_{22} & \cdots & x_{2d} \cr
+\vdots & \vdots & \vdots & \ddots & \vdots \cr
 1 & x_{n1} & x_{n2} & \cdots & x_{nd}
 \end{pmatrix}
 \in \mathbb{R}^{n \times (d+1)} .
@@ -386,8 +386,8 @@ Each weight $w_i = p_i(1-p_i)$ is the variance of the Bernoulli outcome $y_i$. I
 **Concavity.** A function is concave when it curves downwards in every direction. For a function of a vector, the curvature in direction $v$ is $v^\top \nabla^2 \ell v$, and here
 
 $$
-v^\top \nabla^2 \ell(\beta)\, v
-= -\sum_{i=1}^{n} p_i(1-p_i)\left(x_i^\top v\right)^2 \;\le\; 0
+v^\top \nabla^2 \ell(\beta)\thinspace  v
+= -\sum_{i=1}^{n} p_i(1-p_i)\left(x_i^\top v\right)^2 \thickspace \le\thickspace  0
 \qquad \text{for every vector } v ,
 $$
 
@@ -427,7 +427,7 @@ Under standard regularity conditions, $\hat\beta$ is asymptotically normal with 
 $$
 \widehat{\operatorname{Var}}(\hat\beta) = \left(X^\top \hat W X\right)^{-1},
 \qquad
-z_j = \frac{\hat\beta_j}{\widehat{\operatorname{se}}(\hat\beta_j)} \;\sim\; N(0,1) \text{ under } H_0:\beta_j = 0 .
+z_j = \frac{\hat\beta_j}{\widehat{\operatorname{se}}(\hat\beta_j)} \thickspace \sim\thickspace  N(0,1) \text{ under } H_0:\beta_j = 0 .
 $$
 
 These Wald statistics are reported for every scorecard coefficient. The coefficient $\beta_j$ has a direct reading: a one-unit increase in $x_j$ multiplies the odds of default by $e^{\beta_j}$.
@@ -488,7 +488,7 @@ $$
 Since this project models the log-odds of **bad**, $\ln\frac{p}{1-p} = -\ln\frac{P(G\mid x)}{P(B\mid x)}$, and
 
 $$
-\ln\frac{p}{1-p} = \beta_0 + \sum_{j=1}^{d} \beta_j\,\mathrm{WoE}_j(x_j)
+\ln\frac{p}{1-p} = \beta_0 + \sum_{j=1}^{d} \beta_j\thinspace \mathrm{WoE}_j(x_j)
 $$
 
 recovers naive Bayes with $\beta_j = -1$. Fitting the $\beta_j$ by maximum likelihood corrects for correlation between features. A fitted coefficient that is **positive** (the wrong sign under this convention) signals multicollinearity, and that feature is reviewed or removed.
@@ -516,9 +516,9 @@ $$
 The Kullback–Leibler divergence between the goods' distribution $D^G$ and the bads' distribution $D^B$ over the bins is
 
 $$
-\mathrm{KL}\left(D^G \,\Vert\, D^B\right) = \sum_k D^G_k \ln\frac{D^G_k}{D^B_k},
+\mathrm{KL}\left(D^G \thinspace \Vert\thinspace  D^B\right) = \sum_k D^G_k \ln\frac{D^G_k}{D^B_k},
 \qquad
-\mathrm{KL}\left(D^B \,\Vert\, D^G\right) = \sum_k D^B_k \ln\frac{D^B_k}{D^G_k}.
+\mathrm{KL}\left(D^B \thinspace \Vert\thinspace  D^G\right) = \sum_k D^B_k \ln\frac{D^B_k}{D^G_k}.
 $$
 
 Adding them:
@@ -564,8 +564,8 @@ Two business choices fix the constants:
 From condition 2:
 
 $$
-\text{Factor}\cdot\ln(2\,o) - \text{Factor}\cdot\ln(o) = \mathrm{PDO}
-\;\;\Longrightarrow\;\;
+\text{Factor}\cdot\ln(2\thinspace o) - \text{Factor}\cdot\ln(o) = \mathrm{PDO}
+\thickspace \thickspace \Longrightarrow\thickspace \thickspace 
 \text{Factor} = \frac{\mathrm{PDO}}{\ln 2}.
 $$
 
@@ -588,13 +588,13 @@ $$
 With the WoE logistic model, $\ln(\text{odds}) = -\left(\beta_0 + \sum_j \beta_j \mathrm{WoE}_j\right)$. Substituting:
 
 $$
-\text{Score} = \text{Offset} - \text{Factor}\left(\beta_0 + \sum_{j=1}^{d}\beta_j\,\mathrm{WoE}_j\right).
+\text{Score} = \text{Offset} - \text{Factor}\left(\beta_0 + \sum_{j=1}^{d}\beta_j\thinspace \mathrm{WoE}_j\right).
 $$
 
 Spreading the intercept and offset evenly over the $d$ features gives the points for bin $k$ of feature $j$:
 
 $$
-\text{Points}_{j,k} = -\left(\beta_j\,\mathrm{WoE}_{j,k} + \frac{\beta_0}{d}\right)\text{Factor} + \frac{\text{Offset}}{d}.
+\text{Points}_{j,k} = -\left(\beta_j\thinspace \mathrm{WoE}_{j,k} + \frac{\beta_0}{d}\right)\text{Factor} + \frac{\text{Offset}}{d}.
 $$
 
 A loan's score is the sum of the points of the bins it falls in, which is what makes a scorecard auditable line by line.
@@ -668,7 +668,7 @@ where $\gamma$ is a minimum-gain penalty (`min_gain_to_split`). LightGBM evaluat
 For a feature $x_j$ with an economic sign (higher income should never raise PD), a constraint is imposed:
 
 $$
-x_j \le x_j' \;\Longrightarrow\; F(x) \ge F(x') \quad \text{(decreasing PD in } x_j\text{), all other features fixed.}
+x_j \le x_j' \thickspace \Longrightarrow\thickspace  F(x) \ge F(x') \quad \text{(decreasing PD in } x_j\text{), all other features fixed.}
 $$
 
 LightGBM enforces this by rejecting any split on $x_j$ whose left and right leaf values violate the required order, and by passing bounds down to descendant nodes so that no later split can break it. Every tree is then monotonic in $x_j$, and so is their sum. This gives up a little accuracy in exchange for a model whose behaviour matches the scorecard's WoE signs, which is a common model risk requirement.
@@ -698,8 +698,8 @@ The EBM sits between the two other models: as transparent as the scorecard (each
 For a model $f$ and a loan $x$, the contribution of feature $j$ is its Shapley value from cooperative game theory:
 
 $$
-\phi_j(x) = \sum_{S \subseteq \{1,\dots,d\}\setminus\{j\}}
-\frac{|S|!\,(d - |S| - 1)!}{d!}\Big[v(S \cup \{j\}) - v(S)\Big],
+\phi_j(x) = \sum_{S \subseteq \lbrace 1,\dots,d\rbrace \setminus\lbrace j\rbrace }
+\frac{|S|!\thinspace (d - |S| - 1)!}{d!}\Big[v(S \cup \lbrace j\rbrace ) - v(S)\Big],
 $$
 
 where $v(S) = \mathbb{E}\left[f(X) \mid X_S = x_S\right]$ is the expected model output when only the features in $S$ are known. The weight is the probability that, in a random ordering of features, exactly the set $S$ comes before $j$, so $\phi_j$ is the **average marginal contribution of feature $j$ over all orderings**.
@@ -750,7 +750,7 @@ Discrimination (ranking) and calibration (correct levels) are different properti
 With $G$ groups, $O_g$ observed defaults, $E_g = \sum_{i \in g} p_i$ expected defaults and $n_g$ loans in group $g$, the Hosmer–Lemeshow statistic is
 
 $$
-\mathrm{HL} = \sum_{g=1}^{G}\frac{(O_g - E_g)^2}{E_g\left(1 - E_g/n_g\right)} \;\sim\; \chi^2_{G-2} .
+\mathrm{HL} = \sum_{g=1}^{G}\frac{(O_g - E_g)^2}{E_g\left(1 - E_g/n_g\right)} \thickspace \sim\thickspace  \chi^2_{G-2} .
 $$
 
 ### 9.2 Prior correction
@@ -784,8 +784,8 @@ At threshold $t$, the true positive rate is $\mathrm{TPR}(t) = 1 - F_B(t)$ and t
 **AUC as a probability.** Writing $f_G$ for the density of $s$ among goods,
 
 $$
-\mathrm{AUC} = \int_0^1 \mathrm{TPR}\; d\,\mathrm{FPR}
-= \int_{-\infty}^{\infty}\left(1 - F_B(t)\right) f_G(t)\,dt
+\mathrm{AUC} = \int_0^1 \mathrm{TPR}\thickspace  d\thinspace \mathrm{FPR}
+= \int_{-\infty}^{\infty}\left(1 - F_B(t)\right) f_G(t)\thinspace dt
 = P\left(S_B > S_G\right),
 $$
 
@@ -802,7 +802,7 @@ $$
 Since $P(S_B > S_G) + P(S_B < S_G) + P(S_B = S_G) = 1$,
 
 $$
-\mathrm{Gini} = 2\left[P(S_B > S_G) + \tfrac{1}{2}P(S_B = S_G)\right] - 1 = 2\,\mathrm{AUC} - 1 .
+\mathrm{Gini} = 2\left[P(S_B > S_G) + \tfrac{1}{2}P(S_B = S_G)\right] - 1 = 2\thinspace \mathrm{AUC} - 1 .
 $$
 
 A random model has Gini 0 and a perfect one has Gini 1. Geometrically, it is the area between the model's CAP (Lorenz) curve and the random line, divided by the same area for a perfect model.
@@ -881,13 +881,13 @@ where LGD is the fraction of exposure lost if default occurs and EAD is the expo
 Under the Basel internal ratings-based (IRB) approach, capital covers **unexpected** loss. It comes from the asymptotic single risk factor (Vasicek) model, which gives the default rate in a 1-in-1000 downturn. For **other retail exposures**, the category that includes unsecured consumer loans such as Lending Club's, the asset correlation is
 
 $$
-R = 0.03\cdot\frac{1 - e^{-35\,\mathrm{PD}}}{1 - e^{-35}} + 0.16\cdot\left[1 - \frac{1 - e^{-35\,\mathrm{PD}}}{1 - e^{-35}}\right],
+R = 0.03\cdot\frac{1 - e^{-35\thinspace \mathrm{PD}}}{1 - e^{-35}} + 0.16\cdot\left[1 - \frac{1 - e^{-35\thinspace \mathrm{PD}}}{1 - e^{-35}}\right],
 $$
 
 and the capital requirement per unit of exposure is
 
 $$
-K = \mathrm{LGD}\cdot\left[\Phi\left(\frac{\Phi^{-1}(\mathrm{PD}) + \sqrt{R}\;\Phi^{-1}(0.999)}{\sqrt{1-R}}\right) - \mathrm{PD}\right],
+K = \mathrm{LGD}\cdot\left[\Phi\left(\frac{\Phi^{-1}(\mathrm{PD}) + \sqrt{R}\thickspace \Phi^{-1}(0.999)}{\sqrt{1-R}}\right) - \mathrm{PD}\right],
 \qquad
 \mathrm{RWA} = 12.5 \cdot K \cdot \mathrm{EAD},
 $$
