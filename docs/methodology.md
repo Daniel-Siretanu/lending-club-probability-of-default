@@ -978,24 +978,38 @@ The **CSI** applies the same formula to each input feature's bins, which identif
 
 ### 12.1 Out-of-time (OOT) split
 
-Loans are split by **issue date**, not at random:
+The data records each loan's status as of **December 2018**. Loans are split by **issue date**, not at random:
 
 | Sample | Name in code | Issue years | Use |
 |---|---|---|---|
-| **Train** | `train` | 2007–2012 | model fitting, WoE binning, hyperparameter tuning, calibration |
-| **Test** (out-of-time) | `test` | 2013–2015 | final, untouched performance estimate |
+| **Train** | `train` | 2007–2014 | model fitting, WoE binning, hyperparameter tuning, calibration |
+| **Test** (out-of-time) | `test` | 2015 | final, untouched performance estimate |
 
-The train set is what bank model documentation calls the *development sample*, and the test set is the *out-of-time (OOT) sample*. Within the train set, $k$-fold cross-validation splits the data into **validation folds** for tuning; the word *test* is reserved for the 2013–2015 loans, which are used once, at the end.
+Bank model documentation calls the train set the *development sample* and the test set the *out-of-time (OOT) sample*. Within the train set, $k$-fold cross-validation splits the data into **validation folds** for tuning. The word *test* is reserved for the 2015 loans, which are used once, at the end.
 
-A random split would let the model see loans from the same economic period it is tested on. An OOT split tests what actually matters: whether a model built on past vintages ranks and calibrates **future** applicants.
+**Why split by date.** A random split would let the model see loans from the same economic period it is tested on. An out-of-time split tests what matters in practice: whether a model built on past loans ranks and calibrates **future** applicants. The design mimics a bank that builds the model on loans issued up to the end of 2014 and puts it into use in January 2015.
 
-### 12.2 Outcome maturity
+**Why 2015 as the test year.** LendingClub grew very quickly, issuing a few thousand loans a year at first and hundreds of thousands a year by 2014–2015. Splitting at an earlier year (for example, train 2007–2012 and test 2013–2015) would leave about 89% of loans in the test set and too few to build the model on. Testing on the most recent full year keeps most loans for training while still checking the model on loans issued after it was built. 2015 is also the last year whose 36-month loans had time to finish by the December 2018 cut-off (Section 12.2).
 
-A 60-month loan issued in 2015 may still be running at the data cut-off. Keeping only finished loans in recent vintages over-represents those that ended early, and early endings include defaults, which inflates the observed default rate. This **right-censoring** bias is handled by restricting the analysis to vintages whose terms have matured, or by reporting results separately by term.
+### 12.2 Outcome maturity (censoring)
+
+A loan's outcome is known only if the loan had ended by December 2018. Loans still running at that date (*Current*, *In Grace Period*, *Late*) have no outcome and are excluded (Section 1.1).
+
+This creates a bias called **right-censoring**. A loan can end early in only two ways: the borrower repays early or defaults, and defaults often happen in the first year or two. Among recent loans, those that had already ended are therefore disproportionately defaults, while loans being repaid normally were still running and are excluded. The observed default rate of recent vintages is then **higher** than their true eventual default rate.
+
+In this data the effect is limited to **60-month loans issued in 2014–2015**, which are due to finish in 2019–2020. Every 36-month loan issued up to December 2015 was due to finish by December 2018, so 36-month loans are unaffected. For this reason, all test-set results are reported twice: on all 2015 loans, and on **2015 36-month loans only**. If the two agree, censoring does not change the conclusions; if they differ, the 36-month result is the reliable one.
+
+A smaller effect works in the opposite direction: about 2,900 loans were *Late* or *In Grace Period* in December 2018, and many of these would later have defaulted. Excluding them slightly lowers the observed default rate of the most recent vintages.
 
 ### 12.3 What is reported
 
-For each model on both train and test: AUC, Gini, KS, Brier score, calibration curve and Hosmer–Lemeshow, PSI between train and test, and a bootstrap 95% confidence interval for Gini. A large drop in Gini from train to test signals overfitting or population drift.
+For each model, on both the train set and the test set:
+
+- **Discrimination:** AUC, Gini and KS (Section 10), with a bootstrap 95% confidence interval for Gini.
+- **Calibration:** Brier score, calibration curve and Hosmer–Lemeshow test (Section 9).
+- **Stability:** PSI between the train and test score distributions, and CSI for each feature (Section 11).
+
+Test-set results are given for all 2015 loans and for 2015 36-month loans only (Section 12.2). A large drop in Gini from train to test signals overfitting or a change in the borrower population.
 
 ---
 
