@@ -336,13 +336,41 @@ Every term is positive, since $0 < p_i < 1$ and $x_{ij}^2 \ge 0$, so the predict
 
 ### 2.5 Hessian and concavity
 
-**Deriving the Hessian.** The Hessian is the matrix of second derivatives, $\nabla^2 \ell(\beta)$, with entry $(j, k)$ equal to $\partial^2 \ell / \partial \beta_j \partial \beta_k$. Start from the gradient in Section 2.3,
+**Deriving the Hessian.** The gradient and the Hessian of $\ell$ are, written out in full,
+
+$$
+\nabla \ell(\beta) =
+\begin{pmatrix}
+\dfrac{\partial \ell}{\partial \beta_0} \cr
+\dfrac{\partial \ell}{\partial \beta_1} \cr
+\vdots \cr
+\dfrac{\partial \ell}{\partial \beta_d}
+\end{pmatrix},
+\qquad
+\nabla^2 \ell(\beta) =
+\begin{pmatrix}
+\dfrac{\partial^2 \ell}{\partial \beta_0^2} & \dfrac{\partial^2 \ell}{\partial \beta_0 \partial \beta_1} & \cdots & \dfrac{\partial^2 \ell}{\partial \beta_0 \partial \beta_d} \cr
+\dfrac{\partial^2 \ell}{\partial \beta_1 \partial \beta_0} & \dfrac{\partial^2 \ell}{\partial \beta_1^2} & \cdots & \dfrac{\partial^2 \ell}{\partial \beta_1 \partial \beta_d} \cr
+\vdots & \vdots & \ddots & \vdots \cr
+\dfrac{\partial^2 \ell}{\partial \beta_d \partial \beta_0} & \dfrac{\partial^2 \ell}{\partial \beta_d \partial \beta_1} & \cdots & \dfrac{\partial^2 \ell}{\partial \beta_d^2}
+\end{pmatrix}.
+$$
+
+The gradient is a vector with $d+1$ entries, one per coefficient. The Hessian is a $(d+1) \times (d+1)$ matrix whose entry $(j, k)$ is $\partial^2 \ell / \partial \beta_j \partial \beta_k$; it is symmetric, since the order of differentiation does not matter. From Section 2.3, the gradient is
 
 $$
 \nabla \ell(\beta) = \sum_{i=1}^{n} (y_i - p_i)\thinspace x_i ,
+\qquad\text{i.e.}\qquad
+\frac{\partial \ell}{\partial \beta_j} = \sum_{i=1}^{n} (y_i - p_i)\thinspace x_{ij} .
 $$
 
-and differentiate again with respect to $\beta$. The outcomes $y_i$ and features $x_i$ are fixed data, so only $p_i$ changes, and by Step 2 of Section 2.3, $\partial p_i / \partial \beta^\top = p_i(1-p_i)x_i^\top$. Hence
+Differentiating again, the outcomes $y_i$ and features $x_{ij}$ are fixed data, so only $p_i$ changes, and by Step 2 of Section 2.3, $\partial p_i / \partial \beta_k = p_i(1-p_i)x_{ik}$. Hence each entry of the Hessian is
+
+$$
+\frac{\partial^2 \ell}{\partial \beta_j \partial \beta_k} = -\sum_{i=1}^{n} p_i(1-p_i)\thinspace x_{ij}\thinspace x_{ik} ,
+$$
+
+and in matrix form
 
 $$
 \nabla^2 \ell(\beta) = -\sum_{i=1}^{n} p_i(1-p_i)\thinspace x_i\thinspace x_i^\top .
@@ -406,32 +434,136 @@ In credit data, separation is almost always a symptom of **leakage** (Section 1.
 
 ### 2.6 Estimation: Newton–Raphson and IRLS
 
-Newton's method updates
+**The problem.** Section 2.4 showed that the score equations $X^\top (y - p) = 0$ cannot be solved directly, because $\beta$ sits inside the sigmoid. We can still find $\hat\beta$ by starting from a guess and improving it step by step until the gradient is zero. Because the log-likelihood is concave (Section 2.5), these steps lead to the single best $\beta$ from any starting point.
+
+**The idea behind Newton's method.** Write $\beta^{(t)}$ for the guess after $t$ steps ($\beta^{(0)}$ is the starting guess, $\beta^{(1)}$ the first improvement, and so on). The log-likelihood is hard to maximise directly, but close to the current guess it can be approximated by a simpler function whose maximum is easy to find.
+
+In one variable, the standard approximation near a point $a$ is
 
 $$
-\beta^{(t+1)} = \beta^{(t)} - \left[\nabla^2\ell\right]^{-1}\nabla\ell
-= \beta^{(t)} + \left(X^\top W X\right)^{-1} X^\top (y - p).
+f(x) \approx f(a) + f'(a)(x - a) + \frac{1}{2} f''(a)(x - a)^2 ,
 $$
 
-Defining the working response $z = X\beta^{(t)} + W^{-1}(y - p)$, the update becomes
+a **second-order Taylor expansion**: the value at $a$, plus the slope times the step, plus half the curvature times the step squared. It replaces the curve near $a$ by a parabola.
+
+With many coefficients, the step $\beta - \beta^{(t)}$ is a vector, the slope becomes the **gradient** $\nabla\ell$ (a vector of $d+1$ partial derivatives, Section 2.3) and the curvature becomes the **Hessian** $\nabla^2\ell$ (a $(d+1) \times (d+1)$ matrix of second derivatives, Section 2.5). Evaluating both at the current guess gives
 
 $$
-\beta^{(t+1)} = \left(X^\top W X\right)^{-1} X^\top W z,
+\ell(\beta) \approx \underbrace{\ell(\beta^{(t)})}_{\text{current value}} + \underbrace{\nabla\ell(\beta^{(t)})^\top \left(\beta - \beta^{(t)}\right)}_{\text{slope} \times \text{step}} + \underbrace{\frac{1}{2}\left(\beta - \beta^{(t)}\right)^\top \nabla^2\ell(\beta^{(t)}) \left(\beta - \beta^{(t)}\right)}_{\text{curvature} \times \text{step}^2} .
 $$
 
-a weighted least squares problem. Iterating is **Iteratively Reweighted Least Squares (IRLS)**, the algorithm used by `statsmodels`.
+Each term is a single number: the second is a row vector times a column vector, and the third is the same "vector, matrix, vector" product used to measure curvature in Section 2.5. Because the Hessian is negative definite, this approximation is an upside-down bowl around $\beta^{(t)}$, and its peak can be found exactly. 
+
+**Maximising the approximation.** Fix the current guess $\beta^{(t)}$ and write
+
+$$
+g = \nabla\ell(\beta^{(t)}) \in \mathbb{R}^{d+1}, \qquad H = \nabla^2\ell(\beta^{(t)}) \in \mathbb{R}^{(d+1) \times (d+1)}, \qquad s = \beta - \beta^{(t)} .
+$$
+
+The quadratic approximation of Section 2.6 is the function of the step $s$
+
+$$
+q(s) = \ell(\beta^{(t)}) + g^\top s + \frac{1}{2} s^\top H s .
+$$
+
+*Gradient.* Using $\nabla_s (g^\top s) = g$ and, since $H$ is symmetric, $\nabla_s \left(\frac{1}{2} s^\top H s\right) = H s$,
+
+$$
+\nabla q(s) = g + H s .
+$$
+
+*Stationary point.* If $X$ has full column rank, $H = -X^\top W X$ is negative definite (Section 2.5), hence invertible, and $\nabla q(s) = 0$ has the unique solution
+
+$$
+s^{*} = -H^{-1} g .
+$$
+
+*It is the global maximum.* Expanding $\frac{1}{2}(s - s^{*})^\top H (s - s^{*})$ and substituting $H s^{*} = -g$ gives the identity
+
+$$
+q(s) = \ell(\beta^{(t)}) - \frac{1}{2} g^\top H^{-1} g + \frac{1}{2}\left(s - s^{*}\right)^\top H \left(s - s^{*}\right) .
+$$
+
+The first two terms do not depend on $s$. The last term is $\le 0$ for every $s$, with equality if and only if $s = s^{*}$, because $H$ is negative definite. Hence $s^{*}$ is the unique global maximiser of $q$, and the maximum value exceeds the current value $\ell(\beta^{(t)})$ by $-\frac{1}{2} g^\top H^{-1} g \ge 0$ (strictly positive unless $g = 0$, i.e. unless $\beta^{(t)}$ is already the MLE: maximum likelihood estimate).
+
+*Newton update.* Setting the next guess to the maximiser of $q$, $\beta^{(t+1)} = \beta^{(t)} + s^{*}$, gives
+
+$$
+\beta^{(t+1)} = \beta^{(t)} - \left[\nabla^2\ell(\beta^{(t)})\right]^{-1}\nabla\ell(\beta^{(t)}) .
+$$
+
+With a single coefficient this is the familiar rule $x_{\text{new}} = a - f'(a)/f''(a)$: the inverse Hessian plays the role of dividing by the curvature.
+
+**The update for logistic regression.** Substituting the gradient $\nabla\ell = X^\top (y - p)$ (Section 2.3) and the Hessian $\nabla^2\ell = -X^\top W X$ (Section 2.5), the two minus signs cancel:
+
+$$
+\beta^{(t+1)} = \beta^{(t)} + \left(X^\top W X\right)^{-1} X^\top (y - p),
+$$
+
+where $p$ and $W$ are computed from the current guess $\beta^{(t)}$.
+
+**The same step as weighted least squares (IRLS).** Since $\beta^{(t)} = \left(X^\top W X\right)^{-1} X^\top W X \beta^{(t)}$, the update can be rewritten as
+
+$$
+\beta^{(t+1)} = \left(X^\top W X\right)^{-1} X^\top W \left[ X\beta^{(t)} + W^{-1}(y - p) \right] = \left(X^\top W X\right)^{-1} X^\top W z ,
+$$
+
+where $z = X\beta^{(t)} + W^{-1}(y - p)$ is called the **working response**. Entry $i$ of $z$ is loan $i$'s current log-odds plus its prediction error rescaled to the log-odds scale. The final formula is exactly the solution of a **weighted least squares** regression of $z$ on $X$ with weights $w_i = p_i(1 - p_i)$. Each Newton step is therefore an ordinary weighted regression, and because the weights change with every step, the method is called **Iteratively Reweighted Least Squares (IRLS)**. It is the algorithm used by `statsmodels`.
+
+**The algorithm.**
+
+1. **Start.** Set every feature coefficient to 0 and the intercept to the log-odds of the observed default rate, $\beta_0 = \ln\frac{\bar y}{1 - \bar y}$ with $\bar y = \frac{1}{n}\sum_i y_i$. This gives every loan a starting PD equal to the overall default rate, the best prediction possible without using any features. Call this guess $\beta^{(0)}$.
+2. **Compute PDs and weights.** From the current guess $\beta^{(t)}$, compute each loan's PD $p_i = \sigma(x_i^\top\beta^{(t)})$ and weight $w_i = p_i(1 - p_i)$.
+3. **Update.** Compute the new guess $\beta^{(t+1)} = \left(X^\top W X\right)^{-1} X^\top W z$, using the $p_i$ and $w_i$ from the previous step.
+4. **Check and repeat.** If no coefficient changed by more than a small tolerance (for example $10^{-8}$), stop: $\beta^{(t+1)}$ is the fitted $\hat\beta$. Otherwise, return to "Compute PDs and weights" with $\beta^{(t+1)}$ as the current guess.
+
+Newton's method converges very quickly near the optimum: the number of correct digits roughly doubles with each step, so logistic regression usually converges in 5 to 10 iterations. At convergence the gradient is zero, so the score equations hold, and the intercept check of Section 2.4 (average predicted PD equals the observed default rate) is a quick test that the fit has converged.
 
 ### 2.7 Inference
 
-Under standard regularity conditions, $\hat\beta$ is asymptotically normal with covariance equal to the inverse Fisher information:
+**Why it is needed.** The fitted coefficients $\hat\beta$ are estimated from one sample of loans, so they carry sampling error: a different sample would give slightly different values. Inference measures that uncertainty, to answer two questions for each feature: is its effect on default real, or could it be noise, and how precisely is the effect estimated?
+
+**Standard errors.** For large samples, when the model is correctly specified and there is no separation (Section 2.5), the fitted coefficients are approximately normally distributed around the true $\beta$:
 
 $$
-\widehat{\operatorname{Var}}(\hat\beta) = \left(X^\top \hat W X\right)^{-1},
-\qquad
-z_j = \frac{\hat\beta_j}{\widehat{\operatorname{se}}(\hat\beta_j)} \sim N(0,1) \text{ under } H_0:\beta_j = 0 .
+\hat\beta \approx N\left(\beta, \mathcal{I}(\beta)^{-1}\right) ,
 $$
 
-These Wald statistics are reported for every scorecard coefficient. The coefficient $\beta_j$ has a direct reading: a one-unit increase in $x_j$ multiplies the odds of default by $e^{\beta_j}$.
+where $\mathcal{I}(\beta)$ is the **Fisher information**. It is defined from the log-likelihood, in two equivalent ways:
+
+$$
+\mathcal{I}(\beta) = \mathrm{Var}\left[\nabla\ell(\beta)\right] = \mathbb{E}\left[\nabla\ell(\beta)\thinspace\nabla\ell(\beta)^\top\right] = -\mathbb{E}\left[\nabla^2 \ell(\beta)\right] .
+$$
+
+It measures how sharply the log-likelihood is curved around its peak. A sharply curved log-likelihood means that small changes in $\beta$ make the observed data much less likely, so the data determine $\beta$ precisely and its variance is small; a flat one means many values of $\beta$ fit almost equally well and the variance is large. For logistic regression the Hessian $-X^\top W X$ (Section 2.5) depends on the features and PDs but not on the outcomes $y_i$, so the expectation leaves it unchanged and $\mathcal{I}(\beta) = X^\top W X$. Replacing the unknown $\beta$ by its estimate gives the estimated covariance matrix
+
+$$
+\widehat{\mathrm{Var}}(\hat\beta) = \left(X^\top \hat W X\right)^{-1}, \qquad \hat W = \mathrm{diag}\left(\hat p_i(1 - \hat p_i)\right) .
+$$
+
+The **standard error** of coefficient $j$, written $\widehat{\mathrm{se}}(\hat\beta_j)$, is the square root of the $j$-th diagonal entry of this matrix. Intuitively, the more curved the log-likelihood is around its peak, the more sharply the data pin down $\beta$, and the smaller the standard errors.
+
+**Wald test.** To test whether feature $j$ has any effect ($H_0: \beta_j = 0$), divide the estimate by its standard error:
+
+$$
+z_j = \frac{\hat\beta_j}{\widehat{\mathrm{se}}(\hat\beta_j)} .
+$$
+
+If the true $\beta_j$ were 0, $z_j$ would follow a standard normal distribution $N(0, 1)$. So $|z_j| > 1.96$ means the effect is statistically significant at the 5% level. A 95% confidence interval for $\beta_j$ is
+
+$$
+\hat\beta_j \pm 1.96 \times \widehat{\mathrm{se}}(\hat\beta_j) .
+$$
+
+**Worked example.** Suppose $\hat\beta_j = 0.10$ with $\widehat{\mathrm{se}}(\hat\beta_j) = 0.02$. Then $z_j = 0.10 / 0.02 = 5$, well above 1.96, so the effect is significant. The 95% confidence interval is $0.10 \pm 0.039$, i.e. from $0.061$ to $0.139$. Converting to odds (Section 2.1), each one-unit increase in feature $j$ multiplies the odds of default by between $e^{0.061} \approx 1.06$ and $e^{0.139} \approx 1.15$.
+
+**In the scorecard.** These statistics are reported for every scorecard coefficient. A feature whose coefficient is not significant adds noise rather than information and is a candidate for removal. In the WoE scorecard each feature enters as its Weight of Evidence (WoE) value, defined for bin $k$ as
+
+$$
+\mathrm{WoE}_k = \ln\frac{\text{share of all good loans in bin } k}{\text{share of all bad loans in bin } k}
+$$
+
+the log of the share of all good loans in bin $k$ divided by the share of all bad loans in bin $k$ (Section 3). WoE is higher for bins with relatively more good loans, so $\beta_j$ is the effect of one unit of WoE on the log-odds of default, and since a higher WoE should lower the PD, a sensible coefficient is negative (Section 3.3).
 
 ---
 
