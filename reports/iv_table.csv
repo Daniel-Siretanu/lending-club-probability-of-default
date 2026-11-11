@@ -1,0 +1,25 @@
+,IV,bins,missing,group,strength
+sub_grade,0.42111917403093474,15,0.0,LendingClub rating / price,strong
+int_rate,0.3962353844573277,12,0.0,LendingClub rating / price,strong
+grade,0.39328325561066385,5,0.0,LendingClub rating / price,strong
+term_months,0.19894286110363013,2,0.0,borrower / loan,medium
+loan_to_income,0.12383587041118475,12,0.0,borrower / loan,medium
+fico,0.10750499159415292,12,0.0,borrower / loan,medium
+dti,0.05649215881154857,11,0.0,borrower / loan,weak
+verification_status,0.04417493945931739,3,0.0,borrower / loan,weak
+annual_inc,0.03698600152968208,10,0.0,borrower / loan,weak
+revol_util,0.030256281442747356,10,0.0006429299871414003,borrower / loan,weak
+inq_last_6mths,0.022516374371574485,4,0.0,borrower / loan,weak
+mort_acc,0.022463003323992432,7,0.1048219749035605,borrower / loan,weak
+purpose,0.019710420296512,4,0.0,borrower / loan,not predictive
+installment,0.019592025727665673,9,0.0,LendingClub rating / price,not predictive
+home_ownership,0.014737862977789201,3,0.0,borrower / loan,not predictive
+addr_state,0.012325521311454934,9,0.0,borrower / loan,not predictive
+credit_history_years,0.0071693442491939504,9,0.0,borrower / loan,not predictive
+emp_length_years,0.005988688940263942,4,0.04549062209018756,borrower / loan,not predictive
+open_acc,0.00458964421802683,10,0.0,borrower / loan,not predictive
+revol_bal,0.0025657997227654583,3,0.0,borrower / loan,not predictive
+pub_rec,0.0020325932573973453,2,0.0,borrower / loan,not predictive
+delinq_2yrs,0.001306976079576957,3,0.0,borrower / loan,not predictive
+pub_rec_bankruptcies,0.0011512108319149013,2,0.0015452489690950205,borrower / loan,not predictive
+total_acc,0.0006480537795205228,7,0.0,borrower / loan,not predictive
