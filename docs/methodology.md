@@ -434,3 +434,206 @@ $$
 $$
 
 so the other features explain more than 80% of feature $j$. Such a feature is removed and the model is fitted again. This does not happen in our case. The highest VIF is 1.64 in the 36-month model and 1.39 in the 60-month model, so the other features explain at most 39% of any feature. No feature is removed.
+
+### 8.10 How the models do on the train sets
+
+Before the models are tested on new loans, three things are checked on the loans they were built on.
+
+The first is the average PD. By the first equation of Section 8.3, it equals the default rate of the train set exactly, 13.1% for the 36-month loans and 25.4% for the 60-month loans.
+
+The second is how well the model ranks borrowers. Take one loan that defaulted and one that was repaid. The model ranks the pair correctly if it gave the higher PD to the one that defaulted. The AUC is the share of all such pairs that are ranked correctly, with a pair counted as half when the two PDs are equal. Writing $D$ for the set of defaulted loans and $R$ for the set of repaid loans, with $n_D$ and $n_R$ loans in them,
+
+$$
+\mathrm{AUC} = \frac{1}{n_D n_R} \sum_{i \in D} \sum_{k \in R} \left[ \mathbf{1} \lbrace p_i > p_k \rbrace + \frac{1}{2} \mathbf{1} \lbrace p_i = p_k \rbrace \right]
+$$
+
+A model that knows nothing ranks half the pairs correctly, so its AUC is 0.5, and a perfect model has an AUC of 1. The Gini rescales this to run from 0 to 1.
+
+$$
+\mathrm{Gini} = 2 \times \mathrm{AUC} - 1
+$$
+
+The Gini depends only on the order of the PDs and not on their size. On the train sets, the 36-month model has an AUC of 0.653 and a Gini of 0.306, and the 60-month model has an AUC of 0.627 and a Gini of 0.253. So the models rank about 65% and 63% of the pairs correctly. 
+
+The third is whether the PDs match what happened at every level of risk. The loans are sorted by PD and cut into 10 groups of equal size. For each group $g$ with $n_g$ loans, the average PD is compared with the share of loans that defaulted.
+
+$$
+\bar{p}_g = \frac{1}{n_g} \sum_{i \in g} p_i \qquad d_g = \frac{1}{n_g} \sum_{i \in g} y_i
+$$
+
+If the PDs are accurate, $\bar{p}_g$ and $d_g$ are close in every group. They are. For the 36-month loans the default rate rises from 4.0% in the safest group to 25.1% in the riskiest, against average PDs of 4.3% and 25.8%. For the 60-month loans it rises from 11.4% to 40.6%, against average PDs of 11.9% and 41.0%.
+
+**Remark**: a single loan cannot be checked this way. A loan with a PD of 20% that is repaid is not a wrong prediction. The PD is right if, among many loans given about 20%, about 20% default.
+
+---
+
+## 9. Testing the models
+
+The steps in this section are done in [4_test](../notebooks/4_test.ipynb).
+
+The two models are now tried on the test sets, the newer loans set aside in Section 6 and not used since. Each test loan gets a PD from the bins and weights found on the train set. 
+
+### 9.1 The level of the PDs
+
+| | Average PD | Actual default rate |
+|---|---|---|
+| 36-month loans, train set | 13.1% | 13.1% |
+| 36-month loans, test set | 13.4% | 14.9% |
+| 60-month loans, train set | 25.4% | 25.4% |
+| 60-month loans, test set | 26.5% | 24.8% |
+
+On the test sets the models are within two points of what happened. The 36-month model is a little low and the 60-month model a little high.
+
+### 9.2 Ranking
+
+| | AUC | Gini |
+|---|---|---|
+| 36-month loans, train set | 0.653 | 0.306 |
+| 36-month loans, test set | 0.654 | 0.307 |
+| 60-month loans, train set | 0.627 | 0.253 |
+| 60-month loans, test set | 0.607 | 0.214 |
+
+The 36-month model ranks new borrowers as well as the ones it was built on. The 60-month model loses some of its power, with the Gini falling from 0.253 to 0.214. It was built on about a tenth as many loans, so it is less reliable.
+
+These Ginis are modest. Every borrower in the data was already approved by LendingClub, so the clearly risky applicants are missing and the rest are harder to tell apart. 
+
+### 9.3 Calibration
+
+To check this, the test loans are sorted by PD and cut into 10 groups with the same number of loans in each, and in each group the average PD is compared with the share of loans that defaulted, as in Section 8.10.
+
+| Group | 36-month, average PD | 36-month, default rate | 60-month, average PD | 60-month, default rate |
+|---|---|---|---|---|
+| 1, safest | 4.4% | 4.2% | 13.5% | 13.1% |
+| 2 | 6.9% | 7.6% | 17.9% | 16.4% |
+| 3 | 8.6% | 9.7% | 20.6% | 19.6% |
+| 4 | 10.2% | 11.7% | 22.9% | 23.2% |
+| 5 | 11.7% | 13.5% | 25.0% | 24.3% |
+| 6 | 13.3% | 14.9% | 27.1% | 24.6% |
+| 7 | 15.1% | 17.4% | 29.3% | 27.4% |
+| 8 | 17.2% | 19.8% | 32.0% | 29.6% |
+| 9 | 20.2% | 22.4% | 35.2% | 32.5% |
+| 10, riskiest | 26.5% | 27.7% | 41.1% | 37.4% |
+
+For the 36-month loans, the default rate rises in every group, so the order is right. But the PDs are a little low in almost every group, by 1 to 2.6 points.
+
+For the 60-month loans, the default rate also rises from group to group. The PDs are accurate for the safer groups and 2 to 4 points too high for the riskier ones.
+
+### 9.4 What the tests show
+
+Both models rank borrowers on loans they have never seen, and the 36-month model does so as well as on its own train set. Their PDs are close to the default rates that followed, but not exact, because default rates moved over time. The 60-month model is the weaker of the two, as expected from its smaller train set.
+
+---
+
+## 10. The lending decision
+
+The steps in this section are done in [4_test](../notebooks/4_test.ipynb).
+
+The model gives each applicant a PD. It does not decide anything. The lender turns the PD into a decision with a cut-off $c$.
+
+$$
+\mathrm{approve\ loan\ } i \mathrm{\ if\ } p_i < c
+$$
+
+A cut-off of 0.5 would be useless here. Only a minority of loans default, so almost no applicant has a PD of 0.5 or more, and every loan would be approved. The cut-off has to be set from what the lender wants to achieve.
+
+### 10.1 What a cut-off does
+
+Each cut-off is judged by what it would have done on loans whose outcome is known. Five quantities are worked out, over the $n$ loans of a data set.
+
+The approval rate is the share of applicants who get a loan.
+
+$$
+A(c) = \frac{1}{n} \sum_{i=1}^{n} \mathbf{1} \lbrace p_i < c \rbrace
+$$
+
+The default rate of the approved loans is the share of them that default.
+
+$$
+D(c) = \frac{\sum_{i=1}^{n} y_i \mathbf{1} \lbrace p_i < c \rbrace}{\sum_{i=1}^{n} \mathbf{1} \lbrace p_i < c \rbrace}
+$$
+
+The share of defaults avoided is the share of all defaulted loans that the cut-off declines.
+
+$$
+V(c) = \frac{\sum_{i=1}^{n} y_i \mathbf{1} \lbrace p_i \geq c \rbrace}{\sum_{i=1}^{n} y_i}
+$$
+
+The profit is the total gain or loss on the approved loans. The profit of one loan is what the borrower paid back in the end, including interest and anything recovered after a default, minus the amount lent. Writing $r_i$ for the amount paid back and $a_i$ for the amount lent,
+
+$$
+\Pi(c) = \sum_{i=1}^{n} (r_i - a_i) \mathbf{1} \lbrace p_i < c \rbrace
+$$
+
+The return on the money lent is the profit divided by the total amount lent on the approved loans.
+
+$$
+R(c) = \frac{\Pi(c)}{\sum_{i=1}^{n} a_i \mathbf{1} \lbrace p_i < c \rbrace}
+$$
+
+It says how much each dollar lent earns, over the whole life of the loans.
+
+The amounts paid back are known only after the loan has ended, so they are never used as features. They are used here only to judge a decision afterwards, in the same way as the target.
+
+Raising the cut-off approves more applicants and lets more defaults through. Lowering it does the opposite. No cut-off is best on every count, so the choice depends on the aim.
+
+### 10.2 Three ways to choose the cut-off
+
+By profit. The cut-off is the one with the highest profit.
+
+$$
+c_{\mathrm{profit}} = \arg\max_{c} \Pi(c)
+$$
+
+By risk. The lender sets a limit $d$ on the default rate of its approved loans and takes the highest cut-off that respects it. This approves as many applicants as the limit allows.
+
+$$
+c_{\mathrm{risk}} = \max \lbrace c : D(c) \leq d \rbrace
+$$
+
+The limit is 10% for the 36-month loans and 20% for the 60-month loans. The 60-month loans default about twice as often, so the same limit would decline almost all of them.
+
+By volume. The lender wants to approve a set share $v$ of applicants, here 85%, and takes the cut-off that comes closest.
+
+$$
+c_{\mathrm{volume}} = \arg\min_{c} \lvert A(c) - v \rvert
+$$
+
+The cut-offs tried go up in steps of 0.01, from 0.04 to 0.41 for the 36-month loans and from 0.08 to 0.57 for the 60-month loans, whose PDs are higher.
+
+### 10.3 Chosen on the train set, tried on the test set
+
+A cut-off is a decision, so it is chosen without looking at the test set. The three cut-offs are found on the train set. Each is then applied to the test loans, and its approval rate, default rate and profit there are reported. 
+
+### 10.4 What this leaves out
+
+The profit used here is simple. It does not count the time value of money, or the lender's own costs such as funding and servicing.
+
+The profit also rests on the interest rates LendingClub charged, which it set from its own assessment of each borrower's risk. These do shape the profit figures. Riskier borrowers paid more, which is why even risky loans made money on average and why the most profitable cut-off is so high. The profit results therefore say what each cut-off would have earned at LendingClub's prices. The cut-offs chosen by risk and by volume do not depend on those prices.
+
+In practice the PD is only one part of the decision. A lender applies fixed policy rules before the score, and checks separately that the borrower can afford the repayments.
+
+### 10.5 Results
+
+The cut-offs are chosen on the train sets. The figures below are from the test sets.
+
+**36-month loans**
+
+| Way of choosing | Cut-off | Approved | Default rate of approved loans | Defaults avoided | Profit | Return on money lent |
+|---|---|---|---|---|---|---|
+| By profit | 0.38 | 99.9% | 14.9% | 0.3% | $237.4 million | 6.6% |
+| By risk | 0.16 | 69.7% | 11.3% | 47.3% | $190.6 million | 7.2% |
+| By volume | 0.20 | 84.7% | 12.9% | 26.9% | $218.9 million | 6.9% |
+
+**60-month loans**
+
+| Way of choosing | Cut-off | Approved | Default rate of approved loans | Defaults avoided | Profit | Return on money lent |
+|---|---|---|---|---|---|---|
+| By profit | 0.52 | 100.0% | 24.8% | 0.0% | $87.6 million | 19.9% |
+| By risk | 0.27 | 54.0% | 19.6% | 57.2% | $50.9 million | 21.3% |
+| By volume | 0.35 | 84.7% | 22.8% | 22.2% | $76.9 million | 20.6% |
+
+Each way of choosing gives a different cut-off. By profit, almost everyone is approved, because riskier borrowers paid more interest and even risky loans made money on average. By risk, the cut-off is the strictest, and the applicants it declines hold about half of all the defaults. By volume, it sits in between.
+
+So there is a trade-off. A stricter cut-off means fewer defaults and a better return on each dollar lent, but less profit in total, because the declined loans still made money as a group.
+
+The 36-month risk cut-off was chosen to keep the default rate at 10% or less, and the test set gives 11.3%, because loans issued in 2015 defaulted more than earlier ones. The 60-month cut-off stays under its 20% limit. A rule chosen on past loans has to be watched and adjusted over time.
