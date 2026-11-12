@@ -227,6 +227,6 @@ data/processed/*
 # macOS
 .DS_Store
 
-   # Local Python environments
-   .conda/
-   .venv/
+# Local Python environments  
+.conda/
+.venv/
