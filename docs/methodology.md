@@ -204,6 +204,8 @@ What is gained:
 
 ---
 
+---
+
 ## 8. The PD model
 
 The steps in this section are done in [3_model](../notebooks/3_model.ipynb).
@@ -232,7 +234,7 @@ $$
 z = \ln \left( \frac{p}{1 - p} \right)
 $$
 
-The ratio $p / (1 - p)$ is the odds of default. A PD of 20% means odds of 0.25, one default for every four repaid loans. So the score is the log of the odds, and each weight says how much the log odds change when that feature's WoE change.
+The ratio $p / (1 - p)$ is the odds of default. A PD of 20% means odds of 0.25, one default for every four repaid loans. So the score is the log of the odds, and each weight says how much the log odds change when that feature's WoE goes up by one.
 
 ### 8.2 Why WoE fits this model
 
@@ -342,11 +344,11 @@ The selection then works as follows.
 
 1. Start with no features, so $S$ is empty and every loan gets the same PD.
 2. For each feature $j$ not yet in $S$, work out the score with $j$ added.
-3. Take the feature with the lowest score.
-4. Add it to $S$ if it improves the score in all five parts, and go back to step 2.
-5. Otherwise stop.
+3. Keep only the features that improve the score in all five parts.
+4. If there are any, add the one with the lowest average score to $S$ and go back to step 2.
+5. If there are none, stop.
 
-The rule in step 4 can be written as
+The rule in step 3 can be written as
 
 $$
 \mathrm{CV}_m(S \cup \lbrace j \rbrace) < \mathrm{CV}_m(S) \quad \mathrm{for\ every\ part\ } m
@@ -367,6 +369,8 @@ $$
 The symbol $\mathbf{1} \lbrace j \in S_b \rbrace$ is 1 if feature $j$ is chosen in run $b$ and 0 if not.
 
 A feature is kept in the final model if it is chosen in at least 4 of the 5 runs, a stability of 0.8 or more. This allows for one unlucky run, while leaving out the features that are chosen only some of the time. The selection on the whole train set shows how the method works and how much each feature adds, and the 5 runs decide which features are kept.
+
+A feature just under the threshold can also be added by judgement, when there is a clear reason to expect it to matter. Any feature added this way is named, with the reason, and must pass the same checks as the others.
 
 ### 8.7 The features chosen
 
@@ -425,7 +429,7 @@ $$
 
 It is 1 when $R_j^2 = 0$, and grows without limit as $R_j^2$ gets close to 1.
 
-The name comes from its effect on the weight. Only the part of feature $j$ that the others cannot explain helps to pin down its weight, and that part is a share $1 - R_j^2$ of its variation. 
+The name comes from its effect on the weight. Only the part of feature $j$ that the others cannot explain helps to pin down its weight, and that part is a share $1 - R_j^2$ of its variation. So the more the others explain, the more uncertain the weight becomes, by about a factor of the VIF.
 
 A VIF above 5 is the usual sign that a feature repeats the others. It corresponds to $R_j^2 = 0.8$, since
 
@@ -453,9 +457,9 @@ $$
 \mathrm{Gini} = 2 \times \mathrm{AUC} - 1
 $$
 
-The Gini depends only on the order of the PDs and not on their size. On the train sets, the 36-month model has an AUC of 0.653 and a Gini of 0.306, and the 60-month model has an AUC of 0.627 and a Gini of 0.253. So the models rank about 65% and 63% of the pairs correctly. 
+The Gini depends only on the order of the PDs and not on their size. On the train sets, the 36-month model has an AUC of 0.653 and a Gini of 0.306, and the 60-month model has an AUC of 0.627 and a Gini of 0.253. So the models rank about 65% and 63% of the pairs correctly.
 
-The third is whether the PDs match what happened at every level of risk. The loans are sorted by PD and cut into 10 groups of equal size. For each group $g$ with $n_g$ loans, the average PD is compared with the share of loans that defaulted.
+The third is calibration, whether the PDs match what happened at every level of risk. The loans are sorted by PD and cut into 10 groups with the same number of loans in each. For each group $g$ with $n_g$ loans, the average PD is compared with the share of loans that defaulted.
 
 $$
 \bar{p}_g = \frac{1}{n_g} \sum_{i \in g} p_i \qquad d_g = \frac{1}{n_g} \sum_{i \in g} y_i
@@ -471,7 +475,7 @@ If the PDs are accurate, $\bar{p}_g$ and $d_g$ are close in every group. They ar
 
 The steps in this section are done in [4_test](../notebooks/4_test.ipynb).
 
-The two models are now tried on the test sets, the newer loans set aside in Section 6 and not used since. Each test loan gets a PD from the bins and weights found on the train set. 
+The two models are now tried on the test sets, the newer loans set aside in Section 6 and not used since. Each test loan gets a PD from the bins and weights found on the train set.
 
 ### 9.1 The level of the PDs
 
@@ -495,11 +499,11 @@ On the test sets the models are within two points of what happened. The 36-month
 
 The 36-month model ranks new borrowers as well as the ones it was built on. The 60-month model loses some of its power, with the Gini falling from 0.253 to 0.214. It was built on about a tenth as many loans, so it is less reliable.
 
-These Ginis are modest. Every borrower in the data was already approved by LendingClub, so the clearly risky applicants are missing and the rest are harder to tell apart. 
+These Ginis are modest. Every borrower in the data was already approved by LendingClub, so the clearly risky applicants are missing and the rest are harder to tell apart.
 
 ### 9.3 Calibration
 
-To check this, the test loans are sorted by PD and cut into 10 groups with the same number of loans in each, and in each group the average PD is compared with the share of loans that defaulted, as in Section 8.10.
+A model is calibrated when its PDs match what happens. Loans given a PD of 10% should default about 10% of the time. To check this, the test loans are sorted by PD and cut into 10 groups with the same number of loans in each, and in each group the average PD is compared with the share of loans that defaulted, as in Section 8.10.
 
 | Group | 36-month, average PD | 36-month, default rate | 60-month, average PD | 60-month, default rate |
 |---|---|---|---|---|
@@ -602,7 +606,7 @@ The cut-offs tried go up in steps of 0.01, from 0.04 to 0.41 for the 36-month lo
 
 ### 10.3 Chosen on the train set, tried on the test set
 
-A cut-off is a decision, so it is chosen without looking at the test set. The three cut-offs are found on the train set. Each is then applied to the test loans, and its approval rate, default rate and profit there are reported. 
+A cut-off is a decision, so it is chosen without looking at the test set. The three cut-offs are found on the train set. Each is then applied to the test loans, and its approval rate, default rate and profit there are reported.
 
 ### 10.4 What this leaves out
 
@@ -637,3 +641,120 @@ Each way of choosing gives a different cut-off. By profit, almost everyone is ap
 So there is a trade-off. A stricter cut-off means fewer defaults and a better return on each dollar lent, but less profit in total, because the declined loans still made money as a group.
 
 The 36-month risk cut-off was chosen to keep the default rate at 10% or less, and the test set gives 11.3%, because loans issued in 2015 defaulted more than earlier ones. The 60-month cut-off stays under its 20% limit. A rule chosen on past loans has to be watched and adjusted over time.
+
+---
+
+## 11. The scorecard
+
+The steps in this section are done in [5_scorecard](../notebooks/5_scorecard.ipynb).
+
+The model is written as a scorecard. Each bin of each feature gets a number of points, and a borrower's score is the sum of their points. A higher score means a safer borrower. Nothing new is fitted. The points come straight from the weights of Section 8 and the WoE values of Section 7.
+
+### 11.1 The scale
+
+The model works in log odds, which are hard to read. The score is a straight-line stretch of the log odds of repaying. With $p$ the PD, the odds of repaying are $(1 - p) / p$, and
+
+$$
+\mathrm{score} = \mathrm{offset} + \mathrm{factor} \times \ln \left( \frac{1 - p}{p} \right)
+$$
+
+The two numbers are fixed by two choices.
+
+- A score of 600 means odds of 50 to 1, that is 50 borrowers who repay for each one who defaults.
+- Every 20 points more doubles the odds.
+
+The second choice gives the factor. Doubling the odds adds $\ln 2$ to the log odds, and this must add 20 points.
+
+$$
+\mathrm{factor} = \frac{20}{\ln 2} = 28.85
+$$
+
+The first choice then gives the offset.
+
+$$
+\mathrm{offset} = 600 - \mathrm{factor} \times \ln 50 = 487.12
+$$
+
+### 11.2 Points for each bin
+
+The log odds of repaying are the model's score $z$ of Section 8.1 with the sign changed, so
+
+$$
+\mathrm{score} = \mathrm{offset} - \mathrm{factor} \times (\beta_0 + \beta_1 w_1 + \dots + \beta_k w_k)
+$$
+
+This splits into one part that is the same for everyone and one part for each feature.
+
+$$
+\mathrm{score} = \underbrace{\mathrm{offset} - \mathrm{factor} \times \beta_0}_{\mathrm{base\ points}} + \sum_{j=1}^{k} \underbrace{\left( - \mathrm{factor} \times \beta_j w_j \right)}_{\mathrm{points\ of\ feature\ } j}
+$$
+
+Every borrower starts with the base points. Each feature then adds the points of the bin the borrower falls in, which are the bin's WoE times the feature's weight times the factor, with the sign changed. The weights are negative, so a bin with a positive WoE, a safer bin, gets positive points. A bin with a WoE of zero gets no points, so the base points are the score of a borrower who is average on every feature. The points are rounded to whole numbers.
+
+The base points are 542 for the 36-month loans and 518 for the 60-month loans, which default more often. The two scorecards are saved in the `reports` folder.
+
+A score can be turned back into a PD.
+
+$$
+p = \frac{1}{1 + e^{(\mathrm{score} - \mathrm{offset}) / \mathrm{factor}}}
+$$
+
+### 11.3 Checking the scores
+
+The scores are the PDs on another scale, so they should rank borrowers equally well. On the test sets the Gini of the scores is 0.308 for the 36-month loans and 0.213 for the 60-month loans, against 0.307 and 0.214 for the PDs (Section 9.2). The small differences come from rounding the points.
+
+The default rate should also fall as the score rises. The test loans are grouped into bands of 20 points.
+
+| Score | 36-month loans | 36-month default rate | 60-month loans | 60-month default rate |
+|---|---|---|---|---|
+| 480 to 499 | 238 | 36.1% | 1,557 | 37.6% |
+| 500 to 519 | 16,989 | 29.2% | 11,435 | 28.3% |
+| 520 to 539 | 95,656 | 20.5% | 8,128 | 19.1% |
+| 540 to 559 | 115,569 | 12.4% | 995 | 10.7% |
+| 560 to 579 | 45,019 | 6.4% | 17 | 5.9% |
+| 580 to 599 | 9,264 | 2.5% | 0 | |
+| 600 to 619 | 291 | 1.4% | 0 | |
+
+The default rate falls in every step in both groups. A given score also means about the same risk for both loan terms. The two groups differ in where their borrowers sit. Most 36-month loans score between 520 and 559, and most 60-month loans between 500 and 539.
+
+### 11.4 Explaining a decision
+
+The scorecard shows why a borrower got their score. For each feature $j$, the points the borrower got are compared with the most points that feature can give.
+
+$$
+\mathrm{gap}_j = \mathrm{points}_j - \max_{\mathrm{bins\ of\ } j} \mathrm{points}
+$$
+
+The gap is zero when the borrower is in the best bin and negative otherwise. The features with the largest gaps are the main reasons the score is not higher, and the features with no gap are the borrower's strengths. A lender can give the top few as the reasons for a decision. Each one is a fact about the applicant that can be checked against the scorecard.
+
+Two borrowers from the test sets show how this reads.
+
+A 36-month borrower. The base is 542 points, the features take away 13, and the score is 529.
+
+| Feature | Value | Points | Best possible | Gap |
+|---|---|---|---|---|
+| `fico` | 692 | 0 | 28 | −28 |
+| `loan_to_income` | 0.35 | −8 | 6 | −14 |
+| `annual_inc` | 34,000 | −5 | 7 | −12 |
+| `total_acc` | 6 | −6 | 3 | −9 |
+| `purpose` | debt_consolidation | −1 | 5 | −6 |
+| `home_ownership` | RENT | −3 | 3 | −6 |
+| `verification_status` | Source Verified | −1 | 2 | −3 |
+| `dti` | 10.2 | 4 | 6 | −2 |
+| `inq_last_6mths` | 0 | 5 | 5 | 0 |
+| `open_acc` | 5 | 2 | 2 | 0 |
+
+The main reasons the score is not higher are an average FICO score, a loan worth 35% of the borrower's yearly income, and a low income. The FICO score costs no points against the average borrower, but it is 28 points short of the best, which makes it the largest gap. In the borrower's favour, they made no credit applications in the last six months and have few open accounts.
+
+A 60-month borrower. The base is 518 points, the features add 5, and the score is 523.
+
+| Feature | Value | Points | Best possible | Gap |
+|---|---|---|---|---|
+| `fico` | 677 | −7 | 22 | −29 |
+| `home_ownership` | RENT | −3 | 2 | −5 |
+| `loan_to_income` | 0.10 | 8 | 11 | −3 |
+| `annual_inc` | 105,680 | 2 | 5 | −3 |
+| `inq_last_6mths` | 0 | 5 | 5 | 0 |
+| `pub_rec` | 0 | 0 | 0 | 0 |
+
+Here one feature stands out. The FICO score is 29 points short of the best, far more than anything else. The borrower is otherwise in good shape, with a small loan for their income, no recent credit applications and no public records.
