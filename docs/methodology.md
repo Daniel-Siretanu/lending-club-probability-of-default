@@ -758,3 +758,93 @@ A 60-month borrower. The base is 518 points, the features add 5, and the score i
 | `pub_rec` | 0 | 0 | 0 | 0 |
 
 Here one feature stands out. The FICO score is 29 points short of the best, far more than anything else. The borrower is otherwise in good shape, with a small loan for their income, no recent credit applications and no public records.
+
+---
+
+## 12. A challenger model
+
+The steps in this section are done in [6_challenger](../notebooks/6_challenger.ipynb).
+
+The scorecard is simple on purpose. It bins every feature and adds up points. To see what that simplicity costs, a second model is fitted on the same train sets and tested on the same test sets. It is a machine-learning model called LightGBM. If it is only a little better than the scorecard, the scorecard loses little by being simple.
+
+### 12.1 Decision trees
+
+LightGBM is built from decision trees. A tree asks a series of yes or no questions about a loan, such as "is the FICO score below 690?" and then "is the dti above 20?". Each answer sends the loan down a branch, until it reaches an end point called a leaf. Every leaf holds a number, and that number is the tree's output for all the loans that end up there.
+
+The questions are chosen to separate the defaulted loans from the repaid ones. A group of loans is pure if they all had the same outcome, and mixed if it holds both. How mixed it is, is measured by the entropy. For a group in which a share $q$ of the loans defaulted,
+
+$$
+H(q) = - q \ln q - (1 - q) \ln (1 - q)
+$$
+
+The entropy is 0 when the group is pure and highest when $q = 0.5$, an even mix. A basic tree tries every feature and every place to split it, and takes the question that lowers the entropy the most, so that the two new groups are purer than the old one. It then does the same inside each new group, until the groups are too small to split.
+
+A tree can do two things the scorecard cannot. It splits a feature wherever it helps, without fixed bins. And its questions follow one another, so it can treat a high dti differently for a borrower with a low FICO score than for one with a high score. This is called an interaction between features.
+
+
+### 12.2 Adding up many trees
+
+One tree is a crude model. LightGBM adds up many small ones. Like the logistic regression, it works in log odds. For loan $i$ with features $x_i$, the score after $M$ trees is
+
+$$
+z_i = F_0 + \eta \sum_{m=1}^{M} f_m(x_i)
+$$
+
+Here $F_0$ is the starting value, the log odds of default in the whole train set, $f_m(x_i)$ is the number that tree $m$ gives to loan $i$, and $\eta$ is a small number called the learning rate. The score is turned into a PD with the same logistic function as in Section 8.1.
+
+$$
+p_i = \frac{1}{1 + e^{-z_i}}
+$$
+
+The trees are built one after another, and each one corrects the mistakes of those before it. This is called boosting. Before a new tree is built, every loan has a PD from the trees so far, and an error
+
+$$
+e_i = y_i - p_i
+$$
+
+which is positive for a defaulted loan whose PD is too low and negative for a repaid loan whose PD is too high. This is the same quantity as in Section 8.3, the slope of the log-likelihood with respect to the loan's score.
+
+The old trees affect the new one only through these errors. A question is good if it separates loans whose PDs are too low from loans whose PDs are too high. Where the old trees already predict well, the errors on both sides of a question cancel out, so the new tree gains nothing by asking it. Where they have missed a pattern, the errors lean one way in some group of loans, and a question that picks out that group is chosen. In this way each tree works on what the earlier ones left unexplained.
+
+The finished tree is added to the model, multiplied by the learning rate so that it makes only a small correction, and the next tree works on the errors that remain.
+
+So the logistic regression and LightGBM aim at the same thing, the highest log-likelihood. The first does it with one weight per feature. The second does it with hundreds of small trees.
+
+### 12.3 Keeping the model from memorising
+
+A model this flexible can fit the train set almost perfectly and still do badly on new loans, by learning patterns that are only chance. The settings are chosen to prevent this.
+
+| Setting | Value | What it does |
+|---|---|---|
+| Number of trees | 300 | how many corrections are made |
+| Learning rate | 0.05 | each tree makes only a small correction |
+| Leaves per tree | 15 | each tree stays small |
+| Loans per leaf | at least 200 | no leaf rests on a handful of loans |
+| Share of loans per tree | 80%, drawn at random | each tree sees a different sample |
+| Share of features per tree | 80%, drawn at random | no tree can lean on one feature alone |
+
+
+### 12.4 What the challenger is given
+
+The challenger gets all 16 features of Section 5.3 and decides for itself which to use. The number features go in with their exact values. Missing values are left as they are, and at each question the tree learns which branch to send them down. The three category features are marked as categories, and a tree can split them into any two groups.
+
+| | Scorecard | Challenger |
+|---|---|---|
+| Features | 10 or 6, chosen in Section 8 | all 16 |
+| Values | binned, then WoE | exact |
+| Effect of a feature | fixed points per bin | depends on the other features |
+| Size | one weight per feature | 300 trees |
+| Can be read by a person | yes | no |
+
+### 12.5 Results
+
+Both models are tested on the same test loans.
+
+| Loans | Model | AUC | Gini | Average PD | Default rate |
+|---|---|---|---|---|---|
+| 36-month | Scorecard | 0.654 | 0.307 | 13.4% | 14.9% |
+| 36-month | LightGBM | 0.670 | 0.341 | 13.5% | 14.9% |
+| 60-month | Scorecard | 0.607 | 0.214 | 26.5% | 24.8% |
+| 60-month | LightGBM | 0.612 | 0.224 | 26.3% | 24.8% |
+
+LightGBM ranks borrowers a little better, so the simplicity of the scorecard costs little. In return, every decision can be explained, the model can be checked by hand, and it always gives the same points for the same answers. This is why we can keep the scorecard as the main model, with LightGBM as a check on how much more the data could give.
