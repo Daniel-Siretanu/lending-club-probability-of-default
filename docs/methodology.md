@@ -14,6 +14,17 @@ When someone applies for a loan, the lender has to decide whether to lend and at
 
 This project builds a model that estimates the PD of each loan, using only what was known on the day the loan was approved. A good PD model does two things. It ranks borrowers correctly, so riskier borrowers come above safer ones (*discrimination*). And its PDs are right as numbers, so if it says 5%, about 5 in 100 such loans default (*calibration*).
 
+### 1.1 How the work is organised
+
+| Notebook | What it does | Sections |
+|---|---|---|
+| [1_explore_data](../notebooks/1_explore_data.ipynb) | picks the loans and columns, builds the target and features, splits train and test | 2–6 |
+| [2_binning_woe](../notebooks/2_binning_woe.ipynb) | finds the bins and WoE values | 7 |
+| [3_model](../notebooks/3_model.ipynb) | chooses the features and fits the models | 8 |
+| [4_test](../notebooks/4_test.ipynb) | tests the models and sets the lending decision | 9–10 |
+| [5_scorecard](../notebooks/5_scorecard.ipynb) | writes the models as scorecards and explains decisions | 11 |
+| [6_challenger](../notebooks/6_challenger.ipynb) | compares the scorecard with LightGBM | 12 |
+
 ---
 
 ## 2. The data
@@ -78,6 +89,8 @@ These are the candidate features. Two are dropped later because they were not re
 | | `pub_rec_bankruptcies` | bankruptcies (dropped, Section 5.2) |
 | | `revol_bal`, `revol_util` | amount owed on credit cards, and share of the limit used |
 | | `mort_acc` | number of mortgage accounts (dropped, Section 5.2) |
+
+Two more columns, `funded_amnt` (the amount lent) and `total_pymnt` (the total paid back), are kept aside. They are known only after a loan has ended, so they are never features. They are used in Section 10 to work out what a lending decision would have earned.
 
 ---
 
@@ -848,3 +861,27 @@ Both models are tested on the same test loans.
 | 60-month | LightGBM | 0.612 | 0.224 | 26.3% | 24.8% |
 
 LightGBM ranks borrowers a little better, so the simplicity of the scorecard costs little. In return, every decision can be explained, the model can be checked by hand, and it always gives the same points for the same answers. This is why we can keep the scorecard as the main model, with LightGBM as a check on how much more the data could give.
+
+---
+
+## 13. Limitations
+
+The models in this project work, but they have limits that anyone using them should know.
+
+### 13.1 The data
+
+Only approved loans. Every loan in the data was approved by LendingClub. The applicants it turned down are missing, so the models never learned from the riskiest people. One lender, one country, one period. The loans are from a single US platform, issued between 2007 and 2015. Borrowers, lending rules and the economy have all changed since then. The models describe that market at that time.
+
+Few features. Only what LendingClub recorded at application could be used. A bank would also have its own history with the customer and a much fuller credit bureau report.
+
+### 13.2 The models
+
+Several choices were made by judgement. These include the 5% minimum bin size, the threshold of 4 out of 5 runs in the stability check, the two features added by hand for the 60-month period loans, and the risk limits and volume target in the lending decision. Other reasonable choices would give different models.
+
+### 13.3 The lending decision
+
+The cut-off was chosen in three ways. By risk and by volume, it depends only on the PDs and on which loans defaulted. By profit, it also depends on the interest rates LendingClub charged, and on a simple measure of profit that leaves out the time value of money and the lender's own costs. So the profit cut-off is the least reliable of the three.
+
+### 13.5 Fairness
+
+Location was left out because it can stand in for race and national origin. Beyond that, the models were not tested for fairness. Some features, such as income and home ownership, also differ between groups of people. A lender would need to check whether the models treat protected groups differently before using them.
