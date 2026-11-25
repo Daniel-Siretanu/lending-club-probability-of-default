@@ -29,90 +29,90 @@ This project builds a model that estimates the PD of each loan, using only what 
 
 ## 2. The data
 
-The steps in Sections 2 to 6 are done in [1_explore_data](../notebooks/1_explore_data.ipynb).
+Sections 2 to 6 are done in [1_explore_data](../notebooks/1_explore_data.ipynb), in this order.
 
-The data is LendingClub's public loan file `accepted_2007_to_2018Q4.csv.gz` from Kaggle. It has 2,260,701 rows and 151 columns, with one row per loan describing the borrower, the loan and what happened to it. A few rows are summary lines rather than loans, and they are removed.
+The data is LendingClub's loan file `accepted_2007_to_2018Q4.csv.gz` from Kaggle: 2,260,701 rows and 151 columns, one row per loan. A few rows at the end are totals, not loans. They have no issue date, so they drop out when the dates are read.
 
-### 2.1 Loan terms
+### 2.1 Two loan terms
 
-Loans run for either 36 months (offered since 2007) or 60 months (since 2010). The PD here is the chance of default at any point before the loan ends, so a 60-month loan has more time to default than a 36-month one. The two terms are modelled as separate groups.
+Loans last 36 or 60 months. A 60-month loan has more time to default, so its PD is naturally higher. We model the two terms separately, and every step below is done for each one.
 
-### 2.2 Which years can be used
+### 2.2 Which years we can use
 
-Loan statuses are recorded as of December 2018. We only know how a loan ended if it was due to finish by then, so each term keeps only the issue years where that is true.
+Statuses are recorded in December 2018. We only know how a loan ended if it was due to finish by then.
 
-| Term | Loans finish | Issue years used | Loans |
+| Term | Offered from | Issue years used | Loans |
 |---|---|---|---|
-| 36 months | 3 years after issue | 2007–2015 | 621,169 |
-| 60 months | 5 years after issue | 2010–2013 | 55,290 |
+| 36 months | 2007 | 2007–2015 | 621,169 |
+| 60 months | 2010 | 2010–2013 | 55,290 |
 
 ---
 
-## 3. Which columns are used
+## 3. Which columns we use
 
-Most of the 151 columns cannot be used. A column becomes a candidate feature only if it passes five checks.
+We load only a few of the 151 columns. A column can be a feature only if:
 
-1. Known at application. Columns filled in after the loan was issued, such as payments received, partly record the outcome. Using them would be *data leakage*.
-2. Recorded in every year. Columns that LendingClub only started recording later are empty for older loans, so an empty value would just mean "old loan" (Section 5.2).
-3. A usable value. Free text, web links and identifiers are left out.
-4. Not LendingClub's own risk assessment. LendingClub's grade (`grade`, `sub_grade`) and the interest rate and payment set from it (`int_rate`, `installment`) are left out, so the model judges the borrower on its own instead of copying LendingClub.
-5. Not location. `zip_code` and `addr_state` are left out because where someone lives is closely linked to race and national origin, which fair-lending law protects, so location can act as a proxy for them.
+1. **It was known when the loan was approved.** Payment columns, for example, are filled in later and partly record the outcome. Using them would be *data leakage*.
+2. **It was recorded in every year.** If LendingClub started recording it later, an empty value just means "old loan". We check this in Section 5.2.
+3. **It holds a usable value.** No free text, links or ids.
+4. **It isn't LendingClub's own risk rating.** `grade`, `sub_grade`, `int_rate` and `installment` are left out, so the model judges borrowers itself instead of copying LendingClub.
+5. **It isn't location.** `zip_code` and `addr_state` are left out because location is closely linked to race and national origin, which fair-lending law protects.
 
-### 3.1 Columns kept
+### 3.1 Loan columns
 
-Four columns describe the loan itself and are not features.
+Used to pick loans, build the target and split the data. Never features.
 
-| Column | Meaning | Use |
+| Column | Meaning | Used for |
 |---|---|---|
-| `id` | loan number | identifies each loan |
-| `issue_d` | month the loan was issued | splits train and test (Section 6) |
-| `loan_status` | status in December 2018 | builds the target (Section 4) |
-| `term` | 36 or 60 months | splits the two groups (Section 2.1) |
+| `id` | loan number | identifying each loan |
+| `issue_d` | month of issue | choosing years (2.2), train/test split (6) |
+| `loan_status` | status in December 2018 | the target (4) |
+| `term` | 36 or 60 months | the two groups (2.1) |
 
-These are the candidate features. Two are dropped later because they were not recorded in every year (Section 5.2), and the final features are picked from the rest.
+### 3.2 Candidate features
+
+These 19 columns pass checks 1, 3, 4 and 5. Check 2 removes two of them in Section 5.2.
 
 | Group | Column | Meaning |
 |---|---|---|
-| The loan | `loan_amnt` | amount requested, used only relative to income (Section 5.1) |
-| | `purpose` | what the loan is for, such as debt consolidation |
-| The borrower | `annual_inc` | declared yearly income |
-| | `verification_status` | whether LendingClub checked that income |
-| | `emp_length` | years in the current job |
-| | `home_ownership` | rents, owns, or has a mortgage |
-| | `dti` | monthly debt payments (excluding mortgage and this loan) divided by monthly income |
-| Credit history, from the credit bureau | `fico_range_low`, `fico_range_high` | FICO credit score range |
-| | `earliest_cr_line` | date of the first credit account |
+| The loan | `loan_amnt` | amount requested |
+| | `purpose` | what the loan is for |
+| The borrower | `annual_inc` | yearly income |
+| | `verification_status` | whether LendingClub checked the income |
+| | `emp_length` | years in current job |
+| | `home_ownership` | rents, owns or has a mortgage |
+| | `dti` | monthly debt payments (excluding mortgage and this loan) / monthly income |
+| Credit history | `fico_range_low`, `fico_range_high` | FICO score range |
+| | `earliest_cr_line` | date of first credit account |
 | | `delinq_2yrs` | payments 30+ days late in the last two years |
 | | `inq_last_6mths` | credit applications in the last six months |
-| | `open_acc`, `total_acc` | open credit accounts, and all accounts ever opened |
+| | `open_acc`, `total_acc` | open accounts, and all accounts ever opened |
 | | `pub_rec` | public records, such as court judgments and bankruptcies |
-| | `pub_rec_bankruptcies` | bankruptcies (dropped, Section 5.2) |
-| | `revol_bal`, `revol_util` | amount owed on credit cards, and share of the limit used |
-| | `mort_acc` | number of mortgage accounts (dropped, Section 5.2) |
+| | `pub_rec_bankruptcies` | bankruptcies |
+| | `revol_bal`, `revol_util` | credit card balance, and share of the limit used |
+| | `mort_acc` | number of mortgage accounts |
 
-Two more columns, `funded_amnt` (the amount lent) and `total_pymnt` (the total paid back), are kept aside. They are known only after a loan has ended, so they are never features. They are used in Section 10 to work out what a lending decision would have earned.
+### 3.3 Payment columns
+
+`funded_amnt` (amount lent) and `total_pymnt` (total paid back) are only known after the loan ends, so they're never features. We keep them aside for the profit calculation in Section 10.
 
 ---
 
 ## 4. The target
 
-The target $y$ comes from `loan_status`, the loan's status in December 2018.
+The target comes from `loan_status`. We keep only loans with a final outcome.
 
-| Status | Target |
-|---|---|
-| Fully Paid | $y = 0$ (good) |
-| Charged Off, Default | $y = 1$ (bad) |
-| Current, In Grace Period, Late | not used, the loan had not finished |
-| Does not meet the credit policy … | not used, issued under older and looser rules |
+| Status | 36-month | 60-month | Target |
+|---|---|---|---|
+| Fully Paid | 532,629 | 41,139 | 0 (good) |
+| Charged Off | 85,955 | 13,830 | 1 (bad) |
+| Does not meet the credit policy (Fully Paid or Charged Off) | 2,438 | 311 | removed: old, looser rules |
+| Current, Late, In Grace Period | 147 | 10 | removed: not finished |
+| **Loans used** | **618,584** | **54,969** | |
 
-Because only finished years are used (Section 2.2), very few loans are removed.
+"Default" would also count as 1, but no loan in these years has that status. By December 2018 they had all been charged off.
 
-| | 36-month loans | 60-month loans |
-|---|---|---|
-| Loans in the period | 621,169 | 55,290 |
-| Removed, old credit policy | 2,438 | 311 |
-| Removed, still running | 147 | 10 |
-| Loans used | 618,584 | 54,969 |
+The default rate is 13.9% for 36-month loans and 25.2% for 60-month loans.
 
 ---
 
@@ -120,53 +120,59 @@ Because only finished years are used (Section 2.2), very few loans are removed.
 
 ### 5.1 New features
 
-Some columns are turned into a form the model can use. Each new value depends only on the loan itself, so this is done before the train and test split.
+Each one uses only its own loan, so it's safe to build them before the train/test split.
 
-| Feature | Made from | How |
+| Feature | From | How |
 |---|---|---|
-| `fico` | `fico_range_low`, `fico_range_high` | average of the two ends of the range |
-| `credit_history_years` | `earliest_cr_line`, `issue_d` | years from the first credit account to the loan |
-| `loan_to_income` | `loan_amnt`, `annual_inc` | loan amount divided by annual income |
-| `emp_length_years` | `emp_length` | years in the job as a number, from 0 (under a year) to 10 (ten or more) |
+| `fico` | `fico_range_low`, `fico_range_high` | middle of the range |
+| `credit_history_years` | `earliest_cr_line`, `issue_d` | years from first credit account to the loan |
+| `loan_to_income` | `loan_amnt`, `annual_inc` | loan / income (income of 0 counts as missing) |
+| `emp_length_years` | `emp_length` | 0 (under a year) to 10 (ten or more) |
 
-The loan amount is only used through `loan_to_income`. A loan is risky when it is large compared with income, and a scorecard gives points to each feature separately, so it cannot work out that ratio by itself.
+The replaced columns are dropped. `annual_inc` stays as a feature.
+
+Why `loan_to_income` instead of `loan_amnt`? A loan is risky when it's large *for that income*. A scorecard scores each feature separately, so it can't work out the ratio itself. Nothing is lost: loan = ratio × income.
 
 ### 5.2 Missing values
 
-Counting missing values year by year showed two columns that LendingClub did not record for its early loans.
+Counting missing values by year shows two columns that fail check 2:
 
-- `mort_acc` is empty for every loan before 2012. The model would learn that empty means old, and test loans are never empty.
-- `pub_rec_bankruptcies` is empty for almost all 2007 loans and about a third of 2008 loans. Bankruptcies are already counted in `pub_rec`, so nothing is lost.
+- **`mort_acc`**: empty for every loan from 2007 to 2011, partly empty in 2012, never after. The test loans are never empty, so the model would just learn "empty = old".
+- **`pub_rec_bankruptcies`**: empty for 244 of 251 loans in 2007 and 450 of 1,562 in 2008. Bankruptcies are already in `pub_rec`, so nothing is lost. It's dropped from both groups so they start with the same features.
 
-Both are dropped. The other gaps are small and spread across all years, which looks like borrowers not answering, so those features are kept with their gaps.
+Both are dropped. The other missing values are few and show up in recent years too, so "empty" doesn't mean "old". They look like unanswered questions. We keep them, and they get their own bin in Section 7.
 
-| Feature | Missing, 36-month loans | Missing, 60-month loans |
+| Feature | Missing, 36-month | Missing, 60-month |
 |---|---|---|
 | `emp_length_years` | 36,139 (5.8%) | 1,432 (2.6%) |
 | `revol_util` | 347 | 31 |
 | `dti`, `loan_to_income` | 2 | 0 |
 
-### 5.3 Features used
-
-After these changes, 16 features are left. The final features for the model are chosen from these.
+### 5.3 The 16 candidate features
 
 | Kind | Features |
 |---|---|
 | Category | `purpose`, `verification_status`, `home_ownership` |
 | Number | `annual_inc`, `dti`, `delinq_2yrs`, `inq_last_6mths`, `open_acc`, `total_acc`, `pub_rec`, `revol_bal`, `revol_util`, `fico`, `credit_history_years`, `loan_to_income`, `emp_length_years` |
 
+Section 8 picks the final features from these.
+
 ---
 
 ## 6. Train and test sets
 
-Within each group, the model is built on older loans (the train set) and tested on newer loans it has never seen (the test set). This is how a bank works, using past loans to judge new applicants. For 60-month loans the test set is only the second half of 2013, because few loans were issued before then.
+We train on older loans and test on newer ones, the way a bank uses past loans to judge new applicants.
 
-| Group | Train set | Test set |
+| Group | Train | Test |
 |---|---|---|
-| 36-month loans | 2007–2014, 335,558 loans, default rate 13.1% | 2015, 283,026 loans, default rate 14.9% |
-| 60-month loans | Jan 2010 – Jun 2013, 32,837 loans, default rate 25.4% | Jul–Dec 2013, 22,132 loans, default rate 24.8% |
+| 36-month | 2007–2014: 335,558 loans, 13.1% default | 2015: 283,026 loans, 14.9% default |
+| 60-month | Jan 2010 – Jun 2013: 32,837 loans, 25.4% default | Jul–Dec 2013: 22,132 loans, 24.8% default |
 
-Everything the model learns comes from the train set. The test set is only used at the end, to check the model on new loans.
+Why split 60-month loans mid-2013? Most of them (34,382 of 54,969) were issued in 2013. Testing on the whole year would leave too few loans to train on.
+
+The model learns only from the train set. The test set is used once, at the end.
+
+The train and test sets are saved with the 16 features and the target. The payment columns are saved separately, in the same row order, for Section 10.
 
 ---
 
