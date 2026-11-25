@@ -4,7 +4,7 @@ Project: Probability of Default (PD) model on LendingClub loans
 
 Author: Daniel Siretanu
 
-This document explains how the model is built and why. Each section is written when that step of the work is done.
+This document explains how the model is built.
 
 ---
 
@@ -12,7 +12,7 @@ This document explains how the model is built and why. Each section is written w
 
 When someone applies for a loan, the lender has to decide whether to lend and at what interest rate. The key number behind that decision is the probability of default (PD), the chance that the borrower will not repay.
 
-This project builds a model that estimates the PD of each loan, using only what was known on the day the loan was approved. A good PD model does two things. It ranks borrowers correctly, so riskier borrowers come above safer ones (*discrimination*). And its PDs are right as numbers, so if it says 5%, about 5 in 100 such loans default (*calibration*).
+This project builds a model that estimates the PD of each loan, using only what was known on the day the loan was approved. A good PD model does two things. It ranks borrowers correctly, which means riskier borrowers come above safer ones (*discrimination*) and its PDs are right as numbers, so if it says 5%, about 5 in 100 such loans default (*calibration*).
 
 ### 1.1 How the work is organised
 
