@@ -31,7 +31,7 @@ This project builds a model that estimates the PD of each loan, using only what 
 
 Sections 2 to 6 are done in [1_explore_data](../notebooks/1_explore_data.ipynb), in this order.
 
-The data is LendingClub's loan file `accepted_2007_to_2018Q4.csv.gz` from Kaggle: 2,260,701 rows and 151 columns, one row per loan. A few rows at the end are totals, not loans. They have no issue date, so they drop out when the dates are read.
+The data is LendingClub's loan file `accepted_2007_to_2018Q4.csv.gz` from Kaggle: 2,260,701 rows and 151 columns, one row per loan. A few rows have no issue date, so they drop out when the dates are read.
 
 ### 2.1 Two loan terms
 
@@ -53,14 +53,14 @@ Statuses are recorded in December 2018. We only know how a loan ended if it was 
 We load only a few of the 151 columns. A column can be a feature only if:
 
 1. **It was known when the loan was approved.** Payment columns, for example, are filled in later and partly record the outcome. Using them would be *data leakage*.
-2. **It was recorded in every year.** If LendingClub started recording it later, an empty value just means "old loan". We check this in Section 5.2.
+2. **It was recorded in every year.** If LendingClub started recording it later, an empty value just means "old loan". We look more into this in Section 5.2.
 3. **It holds a usable value.** No free text, links or ids.
 4. **It isn't LendingClub's own risk rating.** `grade`, `sub_grade`, `int_rate` and `installment` are left out, so the model judges borrowers itself instead of copying LendingClub.
 5. **It isn't location.** `zip_code` and `addr_state` are left out because location is closely linked to race and national origin, which fair-lending law protects.
 
 ### 3.1 Loan columns
 
-Used to pick loans, build the target and split the data. Never features.
+These columns are used to choose the loans, build the target, split the data and measure profit. None of them is a feature.
 
 | Column | Meaning | Used for |
 |---|---|---|
@@ -110,8 +110,6 @@ The target comes from `loan_status`. We keep only loans with a final outcome.
 | Current, Late, In Grace Period | 147 | 10 | removed: not finished |
 | **Loans used** | **618,584** | **54,969** | |
 
-"Default" would also count as 1, but no loan in these years has that status. By December 2018 they had all been charged off.
-
 The default rate is 13.9% for 36-month loans and 25.2% for 60-month loans.
 
 ---
@@ -131,22 +129,22 @@ Each one uses only its own loan, so it's safe to build them before the train/tes
 
 The replaced columns are dropped. `annual_inc` stays as a feature.
 
-Why `loan_to_income` instead of `loan_amnt`? A loan is risky when it's large *for that income*. A scorecard scores each feature separately, so it can't work out the ratio itself. Nothing is lost: loan = ratio × income.
+The loan amount is used only through `loan_to_income`. What matters for risk is how large a loan is compared with the borrower's income, not its size alone. In doing so no information is lost, since the amount can always be recovered from the ratio and the income.
 
 ### 5.2 Missing values
 
 Counting missing values by year shows two columns that fail check 2:
 
-- **`mort_acc`**: empty for every loan from 2007 to 2011, partly empty in 2012, never after. The test loans are never empty, so the model would just learn "empty = old".
-- **`pub_rec_bankruptcies`**: empty for 244 of 251 loans in 2007 and 450 of 1,562 in 2008. Bankruptcies are already in `pub_rec`, so nothing is lost. It's dropped from both groups so they start with the same features.
+- `mort_acc` is empty for every loan from 2007 to 2011, partly empty in 2012, and filled after that. An empty value would therefore only tell the model that a loan is old, not anything about the borrower. Every test loan has the column filled in and this pattern would never apply to new loans.
+- `pub_rec_bankruptcies` is empty for 244 of 251 loans in 2007 and 450 of 1,562 in 2008. Bankruptcies are already counted in `pub_rec` and nothing is lost by dropping it. The 60-month loans start in 2010 and have no gaps in this column, but it is dropped from them too, so that both loan terms start with the same features.
 
-Both are dropped. The other missing values are few and show up in recent years too, so "empty" doesn't mean "old". They look like unanswered questions. We keep them, and they get their own bin in Section 7.
+Both columns are dropped. The other features have only a few missing values, spread across all the years, so an empty value does not point to an old loan. These gaps look like questions the borrower left unanswered. The features are kept, and their missing values get a bin of their own (Section 7).
 
 | Feature | Missing, 36-month | Missing, 60-month |
 |---|---|---|
 | `emp_length_years` | 36,139 (5.8%) | 1,432 (2.6%) |
-| `revol_util` | 347 | 31 |
-| `dti`, `loan_to_income` | 2 | 0 |
+| `revol_util` | 347 (0.06%) | 31 (0.06%) |
+| `dti`, `loan_to_income` | 2 (under 0.01%) | 0 |
 
 ### 5.3 The 16 candidate features
 
@@ -161,14 +159,14 @@ Section 8 picks the final features from these.
 
 ## 6. Train and test sets
 
-We train on older loans and test on newer ones, the way a bank uses past loans to judge new applicants.
+The data is split into a train set and a test set by the date each loan was issued. The models are built on older loans and tested on newer ones, the way a bank uses past loans to judge new applicants.
 
 | Group | Train | Test |
 |---|---|---|
 | 36-month | 2007–2014: 335,558 loans, 13.1% default | 2015: 283,026 loans, 14.9% default |
 | 60-month | Jan 2010 – Jun 2013: 32,837 loans, 25.4% default | Jul–Dec 2013: 22,132 loans, 24.8% default |
 
-Why split 60-month loans mid-2013? Most of them (34,382 of 54,969) were issued in 2013. Testing on the whole year would leave too few loans to train on.
+The 60-month loans are split in the middle of 2013 instead of at the start of a year. Most of them were issued in 2013 (34,382 of 54,969), so using the whole year as the test set would leave only 20,587 loans to train on, fewer than in the test set. Splitting in mid-2013 gives 32,837 loans to train on and 22,132 to test on, and the test loans are still the most recent ones.
 
 The model learns only from the train set. The test set is used once, at the end.
 
