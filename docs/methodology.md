@@ -178,11 +178,98 @@ The train and test sets are saved with the 16 features and the target. The payme
 
 The steps in this section are done in [2_binning_woe](../notebooks/2_binning_woe.ipynb).
 
-Each feature is grouped into a few bins, and each bin gets a value that says how risky its loans are. This is done separately for each loan term, using its own train set.
+Raw values are not the best for a credit model. Risk does not move evenly with income or FICO, some values are missing, and a few are extreme. So each feature is cut into a few bins, and each bin gets one number that says how risky its loans are. That number is the weight of evidence (WoE), and the model works with it instead of the raw value. This is done separately for each loan term, using its own train set.
 
 ### 7.1 Weight of evidence
 
 WoE compares one bin with the whole train set. Let $g_i$ and $b_i$ be the number of good and bad loans in bin $i$, and $G$ and $B$ the totals. Then
+
+$$
+\mathrm{WoE}_i = \ln \left( \frac{g_i / G}{b_i / B} \right)
+$$
+
+The top part is the share of all good loans that fall in the bin, and the bottom part is the share of all bad loans. If a bin holds more than its share of good loans, it is safer than average and its WoE is positive. If it holds more than its share of bad loans, it is riskier and its WoE is negative. A WoE of zero means the bin is about average.
+
+The formula can also be split in two.
+
+$$
+\mathrm{WoE}_i = \ln \left( \frac{g_i}{b_i} \right) - \ln \left( \frac{G}{B} \right)
+$$
+
+The first term is the log odds of repaying in the bin, and the second is the log odds of repaying in the whole train set. This means that WoE tells us how many log odds safer or riskier than average the bin is. This is why it suits a logistic regression, which also works in log odds.
+
+Every loan gets the WoE of the bin its value falls in. Feature $j$ has its own bins, $K_j$ of them, each with its own WoE. For a loan with raw value $x_j$, the value the model sees is
+
+$$
+w_j(x_j) = \sum_{m=1}^{K_j} \mathrm{WoE}_{jm} \, \mathbf{1} \lbrace x_j \in \mathrm{bin\ } m \mathrm{\ of\ feature\ } j \rbrace
+$$
+
+This is a step function. It stays flat inside a bin and jumps at each edge. 
+
+To udnerstand why this helps, suppose the model used the raw values. The $z$ score (see section 8.1) is given by:
+
+$$
+z = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \dots + \beta_k x_k
+$$
+
+One more unit of $x_j$ changes the log odds by $\beta_j$, whatever the value of $x_j$ is. The effect of each feature is forced to be a straight line, because one weight multiplies the raw value. With WoE the model is
+
+$$
+z = \beta_0 + \beta_1 w_1(x_1) + \beta_2 w_2(x_2) + \dots + \beta_k w_k(x_k)
+$$
+
+Moving feature $j$ from bin $m$ to bin $l$, with the other features unchanged, now changes the log odds by
+
+$$
+\beta_j \left( \mathrm{WoE}_{jl} - \mathrm{WoE}_{jm} \right)
+$$
+
+WoE is better because the curve is already in the inputs. A raw value forces each feature to act in a straight line, while a WoE value carries the real risk of its bin. So the model stays a simple weighted sum and still captures risk that rises, flattens or jumps. The regression only decides how much each feature counts.
+
+
+### 7.2 Finding the bins
+
+The bins are found with optbinning (Navas-Palencia, 2020). It first cuts each feature into small groups, then searches for the best way to join them into bins that follow three rules:
+
+1. **Each bin holds at least 5% of the loans**, so that its WoE is not driven by chance. A bin's default rate is an estimate. If $p$ is the true default rate and the bin has $n$ loans, the typical error of the estimate is
+   $$
+   \sqrt{\frac{p (1 - p)}{n}}
+   $$
+   In the 36-month train set (335,558 loans, 13.1% default), 5% of the loans is about 16,800, which gives an error of about 0.26 percentage points. A bin of only 50 loans would have an error of about 4.8 points, and its WoE would be mostly noise.
+2. **Each bin has both good and bad loans**, since WoE cannot be worked out if either count is zero. With $b_i = 0$ we divide by zero, and with $g_i = 0$ we take $\ln 0$.
+3. **WoE goes in one direction from bin to bin**, so that the effect of a feature is simple to explain. With bins in order, either $\mathrm{WoE}_1 \leq \mathrm{WoE}_2 \leq \dots \leq \mathrm{WoE}_K$ or the reverse. The direction, up or down, is chosen from the data.
+
+Categories are sorted by default rate before being joined, so their WoE also goes in one direction. Missing values always get their own bin, and its WoE comes from the same formula. If a feature had no missing values in the train set, a missing value later gets a WoE of zero, meaning average risk.
+
+### 7.3 What binning gains and loses
+
+Two loans whose values fall in the same bin get the same WoE for that feature, so the model sees the bin and not the exact value. This gives up some detail, and brings several things in return.
+
+What is lost:
+
+- **Detail inside a bin.** Two borrowers with FICO scores of 710 and 720 are treated the same if they share a bin, although the second is probably slightly safer.
+- **Smoothness at the edges.** Two borrowers just either side of a bin edge get different WoE values, although they are almost identical. The score jumps by $\beta_1 (\mathrm{WoE}_l - \mathrm{WoE}_k)$ between them.
+
+What is gained:
+
+- **Risk does not have to follow a straight line.** This is the main gain. Without bins, the model assumes each extra FICO point changes the log odds of default by the same amount everywhere. With bins, each range gets its own level of risk, taken from the data.
+- **The estimates are steady.** The default rate of a bin rests on at least 5% of the loans, so its error is small (Section 7.2).
+- **Extreme values do no harm.** A very high income, or a typing error, just falls in the top bin.
+- **Missing values need no guessing.** They have a bin and a WoE of their own.
+- **The model is easy to explain.** Each bin later becomes a number of points, so anyone can see why a borrower got their score.
+
+
+---
+
+## 7. Binning and WoE
+
+The steps in this section are done in [2_binning_woe](../notebooks/2_binning_woe.ipynb).
+
+Each feature is grouped into a few bins, and each bin gets a value that says how risky its loans are. This is done separately for each loan term, using its own train set.
+
+### 7.1 Weight of evidence
+
+Weights of evidence (WoE) compares one bin with the whole train set. Let $g_i$ and $b_i$ be the number of good and bad loans in bin $i$, and $G$ and $B$ the totals. Then
 
 $$
 \mathrm{WoE}_i = \ln \left( \frac{g_i / G}{b_i / B} \right)
@@ -198,9 +285,9 @@ The bins are found with optbinning (Navas-Palencia, 2020). It first cuts each fe
 
 1. Each bin holds at least 5% of the loans, so that its WoE is not driven by chance.
 2. Each bin has both good and bad loans, since WoE cannot be worked out if either count is zero.
-3. WoE goes in one direction from bin to bin, so that the effect of a feature is simple to explain. The direction, up or down, is chosen from the data.
+3. WoE goes in one direction from bin to bin (monotnicity) and the effect of a feature is simple to explain. The direction, up or down, is decided from the data.
 
-Categories are sorted by default rate before being joined, so their WoE also goes in one direction. Missing values always get their own bin. If a feature had no missing values in the train set, a missing value later gets a WoE of zero, meaning average risk.
+Categories are sorted by default rate before being joined, so their WoE also goes in one direction. Missing values get their own bin. If a feature has no missing values in the train set, there is no bin for them. A loan with a missing value in the test set, or a new applicant, then gets a WoE of zero, meaning average risk.
 
 ### 7.3 What binning gains and loses
 
@@ -213,15 +300,19 @@ What is lost:
 
 What is gained:
 
-- Risk does not have to follow a straight line. Without bins, the model assumes each extra FICO point lowers risk by the same amount everywhere. With bins, each range gets its own level of risk.
-- The estimates are steady. The default rate of a bin rests on at least 5% of the loans.
+- Risk does not have to follow a straight line. Without bins, the model assumes each extra FICO point changes the log odds of default by the same amount everywhere. With bins, each range gets its own level of risk.
+- The inputs are in the same units as the score. The score $z$ is a log odds (Section 8.1), and WoE is also a difference in log odds (Section 7.1). Therefore, adding up WoE values is the natural thing to do mathematically. In the simplest case, with one feature, the model reproduces each bin's default rate exactly. The best weights are $\beta_0 = \ln(B/G)$ and $\beta_1 = -1$ (Section 8.2), so the score of a loan in bin $i$ is
+$$
+z_i = \ln\left(\frac{B}{G}\right) - \mathrm{WoE}_i = \ln\left(\frac{b_i}{g_i}\right)
+$$
+which is the log odds of default in that bin. Every loan in the bin therefore gets the bin's observed default rate as its PD.
+- The estimates are reliable. Each bin holds at least 5% of the loans, which means that its default rate is based on a signifcant portion of the data and is not driven by chance.
 - Extreme values do no harm. A very high income, or a typing error, just falls in the top bin.
 - Missing values need no guessing. They have a bin and a WoE of their own.
 - The model is easy to explain. Each bin later becomes a number of points, so anyone can see why a borrower got their score.
 
 ---
 
----
 
 ## 8. The PD model
 
@@ -889,3 +980,10 @@ The cut-off was chosen in three ways. By risk and by volume, it depends only on 
 ### 13.5 Fairness
 
 Location was left out because it can stand in for race and national origin. Beyond that, the models were not tested for fairness. Some features, such as income and home ownership, also differ between groups of people. A lender would need to check whether the models treat protected groups differently before using them.
+
+## 14. References
+
+- Navas-Palencia, G. (2020). Optimal binning: mathematical programming formulation. arXiv:2001.08025.
+- Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q. and Liu, T.-Y. (2017). LightGBM: A highly efficient gradient boosting decision tree. *Advances in Neural Information Processing Systems 30*.
+- Siddiqi, N. (2006). *Credit Risk Scorecards: Developing and Implementing Intelligent Credit Scoring*. Wiley.
+- LendingClub loan data, 2007 to 2018 Q4, `accepted_2007_to_2018Q4.csv.gz`, Kaggle.
